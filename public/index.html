@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Little Stickmen</title>
+
 <style>
 * { box-sizing: border-box; }
 
@@ -13,7 +14,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #fff;
+  background: white;
   font-family: Arial, sans-serif;
   touch-action: none;
 }
@@ -32,7 +33,7 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,.94);
+  background: #ffffffef;
 }
 
 .panel {
@@ -59,30 +60,28 @@ h1 {
 }
 
 input, button {
-  width: 100%;
-  padding: 14px;
-  border-radius: 13px;
   font-size: 16px;
+  border-radius: 13px;
 }
 
 input {
+  width: 100%;
+  padding: 14px;
   border: 1px solid #e5e7eb;
   outline: none;
   text-align: center;
   margin-bottom: 10px;
-  color: #333;
   background: #fafafa;
 }
 
-button {
+#joinButton {
+  width: 100%;
+  padding: 14px;
   border: 0;
   color: white;
-  background: #333fdb;
+  background: #5267e8;
   font-weight: bold;
-  cursor: pointer;
 }
-
-button:active { transform: scale(.98); }
 
 #status {
   color: #e05252;
@@ -98,12 +97,11 @@ button:active { transform: scale(.98); }
   transform: translateX(-50%);
   z-index: 2;
   padding: 9px 16px;
-  border: 1px solid #eeeeee;
+  border: 1px solid #eee;
   border-radius: 30px;
-  background: #ffffffdc;
+  background: #ffffffdf;
   color: #656b76;
   font-size: 13px;
-  box-shadow: 0 3px 15px #00000008;
   pointer-events: none;
 }
 
@@ -128,19 +126,48 @@ button:active { transform: scale(.98); }
   left: 37px;
   top: 37px;
   border-radius: 50%;
-  background: #ffffff;
+  background: white;
   border: 1px solid #e1e3e9;
   box-shadow: 0 4px 14px #00000015;
   pointer-events: none;
 }
 
+#punchButton {
+  position: fixed;
+  right: 28px;
+  bottom: 38px;
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: #5267e8;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  border: 4px solid white;
+  box-shadow: 0 5px 20px #5267e855;
+  z-index: 4;
+  touch-action: none;
+  display: none;
+}
+
 @media (pointer: coarse) {
-  #joystick { display: block; }
+  #joystick, #punchButton { display: block; }
+}
+
+@media (pointer: fine) {
+  #punchButton {
+    display: block;
+    width: 65px;
+    height: 65px;
+    right: 22px;
+    bottom: 22px;
+    opacity: .8;
+  }
 }
 </style>
 </head>
-<body>
 
+<body>
 <canvas id="game"></canvas>
 
 <div id="top">Ожидание игроков...</div>
@@ -149,16 +176,14 @@ button:active { transform: scale(.98); }
   <div class="panel">
     <h1>Little Stickmen</h1>
     <div class="subtitle">Маленький мир для двоих</div>
-    <input id="code" value="TEST123" maxlength="12"
-           placeholder="Код комнаты">
+    <input id="code" value="TEST123" maxlength="12" placeholder="Код комнаты">
     <button id="joinButton">Играть</button>
     <p id="status"></p>
   </div>
 </div>
 
-<div id="joystick">
-  <div id="stick"></div>
-</div>
+<div id="joystick"><div id="stick"></div></div>
+<button id="punchButton">УДАР</button>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -175,22 +200,24 @@ let joined = false;
 let players = [];
 let smoothPlayers = {};
 let lastInput = 0;
-
-const keys = {};
-const input = { x: 0, y: 0 };
-
+let lastTime = performance.now();
 let width = innerWidth;
 let height = innerHeight;
 let dpr = 1;
+
+const keys = {};
+const input = { x: 0, y: 0 };
+const particles = [];
+const punchTimes = {};
+
 let cameraX = 900;
 let cameraY = 600;
-let lastTime = performance.now();
+let punchCooldown = 0;
 
 function resize() {
   width = innerWidth;
   height = innerHeight;
   dpr = Math.min(devicePixelRatio || 1, 2);
-
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -200,9 +227,8 @@ addEventListener("resize", resize);
 resize();
 
 function join() {
-  const code = document.getElementById("code").value;
   statusText.textContent = "Подключаемся...";
-  socket.emit("join", code);
+  socket.emit("join", document.getElementById("code").value);
 }
 
 document.getElementById("joinButton").addEventListener("click", join);
@@ -226,7 +252,6 @@ socket.on("errorMessage", msg => {
 
 socket.on("players", list => {
   players = list;
-
   const alive = new Set(list.map(p => p.id));
 
   for (const id of Object.keys(smoothPlayers)) {
@@ -236,14 +261,17 @@ socket.on("players", list => {
   for (const p of list) {
     if (!smoothPlayers[p.id]) {
       smoothPlayers[p.id] = {
-        x: p.x, y: p.y, vx: 0, vy: 0
+        x: p.x, y: p.y,
+        vx: p.vx || 0, vy: p.vy || 0,
+        tx: p.x, ty: p.y
       };
     }
 
-    smoothPlayers[p.id].tx = p.x;
-    smoothPlayers[p.id].ty = p.y;
-    smoothPlayers[p.id].vx = p.vx || 0;
-    smoothPlayers[p.id].vy = p.vy || 0;
+    const s = smoothPlayers[p.id];
+    s.tx = p.x;
+    s.ty = p.y;
+    s.svx = p.vx || 0;
+    s.svy = p.vy || 0;
   }
 
   topText.textContent = list.length === 2
@@ -251,13 +279,35 @@ socket.on("players", list => {
     : "Ожидание второго игрока...";
 });
 
+socket.on("punchEffect", data => {
+  punchTimes[data.id] = performance.now();
+  const p = smoothPlayers[data.id];
+
+  if (p) {
+    for (let i = 0; i < 9; i++) {
+      particles.push({
+        x: p.x + (Math.random() - .5) * 25,
+        y: p.y - 12 + (Math.random() - .5) * 20,
+        vx: (Math.random() - .5) * 110,
+        vy: (Math.random() - .5) * 110,
+        life: .45,
+        size: 2 + Math.random() * 3
+      });
+    }
+  }
+});
+
 // Клавиатура
 addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
+
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) {
     e.preventDefault();
   }
+
   keys[k] = true;
+
+  if (e.code === "Space" && !e.repeat) punch();
 });
 
 addEventListener("keyup", e => {
@@ -269,7 +319,7 @@ addEventListener("blur", () => {
   input.x = input.y = 0;
 });
 
-// Мобильный джойстик
+// Джойстик
 const joystick = document.getElementById("joystick");
 const stick = document.getElementById("stick");
 let joyPointer = null;
@@ -281,7 +331,6 @@ function moveJoystick(e) {
 
   let dx = e.clientX - cx;
   let dy = e.clientY - cy;
-
   const max = 38;
   const length = Math.hypot(dx, dy);
 
@@ -291,7 +340,6 @@ function moveJoystick(e) {
   }
 
   stick.style.transform = `translate(${dx}px, ${dy}px)`;
-
   input.x = dx / max;
   input.y = dy / max;
 }
@@ -317,25 +365,35 @@ function releaseJoystick(e) {
 joystick.addEventListener("pointerup", releaseJoystick);
 joystick.addEventListener("pointercancel", releaseJoystick);
 
-// Частицы шагов
-const particles = [];
+// Удар
+function punch() {
+  if (!joined || punchCooldown > 0) return;
 
+  punchCooldown = .65;
+  punchTimes[myId] = performance.now();
+  socket.emit("punch");
+}
+
+document.getElementById("punchButton").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  punch();
+});
+
+// Частицы
 function addDust(x, y) {
-  if (Math.random() > 0.22) return;
+  if (Math.random() > .2) return;
 
   particles.push({
     x: x + (Math.random() - .5) * 15,
     y: y + 24,
     vx: (Math.random() - .5) * 25,
     vy: -Math.random() * 18,
-    life: 1,
+    life: .65,
     size: 2 + Math.random() * 3
   });
 }
 
-function update() {
-  if (!joined) return;
-
+function getMovement() {
   let x = input.x;
   let y = input.y;
 
@@ -345,20 +403,90 @@ function update() {
   if (keys["d"] || keys["arrowright"]) x += 1;
 
   const len = Math.hypot(x, y);
+
   if (len > 1) {
     x /= len;
     y /= len;
   }
 
-  const now = performance.now();
-  if (now - lastInput > 45) {
-    socket.emit("input", { x, y });
+  return { x, y };
+}
+
+function update(dt, now) {
+  punchCooldown = Math.max(0, punchCooldown - dt);
+
+  if (!joined) return;
+
+  const move = getMovement();
+
+  // Отправляем управление серверу, но не ждём ответа,
+  // чтобы локальный персонаж двигался сразу.
+  if (now - lastInput > 33) {
+    socket.emit("input", move);
     lastInput = now;
+  }
+
+  const me = smoothPlayers[myId];
+
+  if (me) {
+    me.vx += move.x * 260 * .16 * (dt / .033);
+    me.vy += move.y * 260 * .16 * (dt / .033);
+
+    const friction = Math.pow(.84, dt / .033);
+    me.vx *= friction;
+    me.vy *= friction;
+
+    const speed = Math.hypot(me.vx, me.vy);
+
+    if (speed > 260) {
+      me.vx = me.vx / speed * 260;
+      me.vy = me.vy / speed * 260;
+    }
+
+    me.x += me.vx * dt;
+    me.y += me.vy * dt;
+
+    me.x = Math.max(25, Math.min(1775, me.x));
+    me.y = Math.max(25, Math.min(1175, me.y));
+
+    // Мягко исправляем расхождение с сервером.
+    const errorX = me.tx - me.x;
+    const errorY = me.ty - me.y;
+
+    me.x += errorX * Math.min(1, dt * 2.5);
+    me.y += errorY * Math.min(1, dt * 2.5);
+
+    me.vx += (me.svx - me.vx) * Math.min(1, dt * 1.8);
+    me.vy += (me.svy - me.vy) * Math.min(1, dt * 1.8);
+
+    if (Math.hypot(me.vx, me.vy) > 80) addDust(me.x, me.y);
+  }
+
+  // Другие игроки плавно следуют за серверными координатами.
+  for (const [id, p] of Object.entries(smoothPlayers)) {
+    if (id === myId) continue;
+
+    const blend = Math.min(1, dt * 12);
+    p.x += (p.tx - p.x) * blend;
+    p.y += (p.ty - p.y) * blend;
+    p.vx = p.svx;
+    p.vy = p.svy;
+
+    if (Math.hypot(p.vx, p.vy) > 80) addDust(p.x, p.y);
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt * 1.7;
+
+    if (p.life <= 0) particles.splice(i, 1);
   }
 }
 
 function drawBackground() {
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
 
   const spacing = 80;
@@ -372,10 +500,8 @@ function drawBackground() {
 
   for (let x = startX; x < left + width + spacing; x += spacing) {
     for (let y = startY; y < top + height + spacing; y += spacing) {
-      const sx = x - left;
-      const sy = y - top;
       ctx.beginPath();
-      ctx.arc(sx, sy, 1.3, 0, Math.PI * 2);
+      ctx.arc(x - left, y - top, 1.3, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -384,14 +510,18 @@ function drawBackground() {
 function drawStickman(p, time) {
   const speed = Math.hypot(p.vx, p.vy);
   const moving = speed > 15;
-  const walk = moving ? Math.sin(time * 0.014) : Math.sin(time * 0.002) * 0.06;
-  const swing = moving ? walk * 0.65 : 0;
-  const bob = moving ? Math.abs(Math.sin(time * 0.014)) * 2.5 : Math.sin(time * 0.002) * 1.2;
+  const walk = moving ? Math.sin(time * .014) : Math.sin(time * .002) * .06;
+  const swing = moving ? walk * .65 : 0;
+  const bob = moving ? Math.abs(Math.sin(time * .014)) * 2.5 : Math.sin(time * .002) * 1.2;
 
   const isMe = p.id === myId;
   const color = isMe ? "#5267e8" : "#ef795f";
   const x = p.x;
   const y = p.y + bob;
+
+  const punchAge = time - (punchTimes[p.id] || 0);
+  const punching = punchAge >= 0 && punchAge < 250;
+  const punchSwing = punching ? Math.sin(punchAge / 250 * Math.PI) : 0;
 
   ctx.save();
   ctx.translate(x, y);
@@ -423,10 +553,12 @@ function drawStickman(p, time) {
   ctx.moveTo(0, -13);
   ctx.lineTo(-10 - swing * 10, -3);
   ctx.lineTo(-13 - swing * 13, 5);
+  ctx.stroke();
 
+  ctx.beginPath();
   ctx.moveTo(0, -13);
-  ctx.lineTo(10 + swing * 10, -3);
-  ctx.lineTo(13 + swing * 13, 5);
+  ctx.lineTo(10 + swing * 10 + punchSwing * 22, -3 - punchSwing * 7);
+  ctx.lineTo(13 + swing * 13 + punchSwing * 30, 5 - punchSwing * 9);
   ctx.stroke();
 
   // Тело
@@ -445,7 +577,7 @@ function drawStickman(p, time) {
   ctx.fill();
   ctx.stroke();
 
-  // Глазки
+  // Глаза
   ctx.fillStyle = "#343946";
   ctx.beginPath();
   ctx.arc(-3.2, -26, 1.15, 0, Math.PI * 2);
@@ -462,10 +594,10 @@ function drawStickman(p, time) {
 }
 
 function frame(now) {
-  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  const dt = Math.min((now - lastTime) / 1000, .05);
   lastTime = now;
 
-  update();
+  update(dt, now);
 
   const me = smoothPlayers[myId];
 
@@ -474,38 +606,17 @@ function frame(now) {
     cameraY += (me.y - cameraY) * Math.min(1, dt * 5);
   }
 
-  for (const p of Object.values(smoothPlayers)) {
-    p.x += (p.tx - p.x) * 0.28;
-    p.y += (p.ty - p.y) * 0.28;
-  }
-
   drawBackground();
 
   ctx.save();
   ctx.translate(width / 2 - cameraX, height / 2 - cameraY);
 
-  // Границы мира
   ctx.strokeStyle = "#f0f1f4";
   ctx.lineWidth = 3;
   ctx.strokeRect(0, 0, 1800, 1200);
 
-  // Пыль
-  for (const p of Object.values(smoothPlayers)) {
-    if (Math.hypot(p.vx, p.vy) > 80) addDust(p.x, p.y);
-  }
-
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.life -= dt * 1.6;
-
-    if (p.life <= 0) {
-      particles.splice(i, 1);
-      continue;
-    }
-
-    ctx.globalAlpha = p.life * .35;
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life) * .4;
     ctx.fillStyle = "#aeb4c2";
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
@@ -522,7 +633,6 @@ function frame(now) {
   }
 
   ctx.restore();
-
   requestAnimationFrame(frame);
 }
 
