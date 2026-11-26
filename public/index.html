@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Stickman Online</title>
+<style>
+body {
+  background: #172033;
+  color: white;
+  text-align: center;
+  font-family: Arial;
+}
+canvas {
+  background: #dceeff;
+  border: 4px solid white;
+  max-width: 95%;
+}
+input, button {
+  padding: 12px;
+  margin: 8px;
+}
+</style>
+</head>
+<body>
+
+<h1>Stickman Online</h1>
+
+<input id="code" value="TEST123" placeholder="Код комнаты">
+<button onclick="join()">Войти</button>
+
+<p id="status">Не подключено</p>
+
+<canvas id="game" width="700" height="400"></canvas>
+
+<p>Управление: WASD или стрелки</p>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let myId = null;
+let players = [];
+let joined = false;
+const keys = {};
+
+function join() {
+  socket.emit("join", document.getElementById("code").value);
+}
+
+socket.on("joined", id => {
+  myId = id;
+  joined = true;
+  document.getElementById("status").textContent =
+    "Ты подключился к комнате!";
+});
+
+socket.on("errorMessage", msg => {
+  document.getElementById("status").textContent = msg;
+});
+
+socket.on("players", list => {
+  players = list;
+  draw();
+});
+
+document.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+});
+
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function update() {
+  if (joined) {
+    const me = players.find(p => p.id === myId);
+
+    if (me) {
+      let dx = 0, dy = 0;
+
+      if (keys["w"] || keys["arrowup"]) dy -= 4;
+      if (keys["s"] || keys["arrowdown"]) dy += 4;
+      if (keys["a"] || keys["arrowleft"]) dx -= 4;
+      if (keys["d"] || keys["arrowright"]) dx += 4;
+
+      if (dx || dy) {
+        socket.emit("move", {
+          x: me.x + dx,
+          y: me.y + dy
+        });
+      }
+    }
+  }
+
+  requestAnimationFrame(update);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, 700, 400);
+
+  players.forEach((p, i) => {
+    ctx.strokeStyle = i === 0 ? "#2463db" : "#e05235";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+
+    // Голова
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 25, 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Тело и конечности
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 15);
+    ctx.lineTo(p.x, p.y + 15);
+
+    ctx.moveTo(p.x, p.y - 5);
+    ctx.lineTo(p.x - 15, p.y + 5);
+
+    ctx.moveTo(p.x, p.y - 5);
+    ctx.lineTo(p.x + 15, p.y + 5);
+
+    ctx.moveTo(p.x, p.y + 15);
+    ctx.lineTo(p.x - 12, p.y + 32);
+
+    ctx.moveTo(p.x, p.y + 15);
+    ctx.lineTo(p.x + 12, p.y + 32);
+
+    ctx.stroke();
+
+    ctx.fillStyle = "#172033";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(p.id === myId ? "Ты" : "Друг",
+                 p.x, p.y - 45);
+  });
+}
+
+update();
+</script>
+</body>
+</html>
