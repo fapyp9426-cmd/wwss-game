@@ -11,12 +11,14 @@ app.use(express.static("public"));
 
 const rooms = {};
 const WORLD = { width: 1800, height: 1200 };
-const SPEED = 260;
 const RADIUS = 25;
+const SPEED = 260;
+const TICK = 33;
 
 io.on("connection", socket => {
   socket.on("join", rawCode => {
     const code = String(rawCode || "").trim().toUpperCase();
+
     if (!/^[A-Z0-9]{3,12}$/.test(code)) return;
     if (socket.data.room) return;
 
@@ -36,7 +38,10 @@ io.on("connection", socket => {
       vx: 0,
       vy: 0,
       inputX: 0,
-      inputY: 0
+      inputY: 0,
+      faceX: count === 0 ? 1 : -1,
+      faceY: 0,
+      lastPunch: 0
     };
 
     rooms[code][socket.id] = player;
@@ -50,26 +55,74 @@ io.on("connection", socket => {
   socket.on("input", data => {
     const code = socket.data.room;
     const player = rooms[code]?.[socket.id];
+
     if (!player || !data) return;
 
     let x = Number(data.x) || 0;
     let y = Number(data.y) || 0;
 
     const length = Math.hypot(x, y);
+
     if (length > 1) {
       x /= length;
       y /= length;
     }
 
-    player.inputX = Math.max(-1, Math.min(1, x));
-    player.inputY = Math.max(-1, Math.min(1, y));
+    player.inputX = x;
+    player.inputY = y;
+
+    if (length > 0.05) {
+      player.faceX = x / Math.max(length, 1);
+      player.faceY = y / Math.max(length, 1);
+    }
+  });
+
+  socket.on("punch", () => {
+    const code = socket.data.room;
+    const room = rooms[code];
+    const player = room?.[socket.id];
+
+    if (!player) return;
+
+    const now = Date.now();
+
+    if (now - player.lastPunch < 650) return;
+
+    player.lastPunch = now;
+
+    for (const other of Object.values(room)) {
+      if (other.id === player.id) continue;
+
+      const dx = other.x - player.x;
+      const dy = other.y - player.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance < 120) {
+        const nx = distance > 0.01 ? dx / distance : player.faceX;
+        const ny = distance > 0.01 ? dy / distance : player.faceY;
+
+        const facingDot = nx * player.faceX + ny * player.faceY;
+
+        if (facingDot > -0.25) {
+          other.vx += nx * 420;
+          other.vy += ny * 420;
+        }
+      }
+    }
+
+    io.to(code).emit("punchEffect", {
+      id: player.id,
+      time: now
+    });
   });
 
   socket.on("disconnect", () => {
     const code = socket.data.room;
+
     if (!code || !rooms[code]) return;
 
     delete rooms[code][socket.id];
+
     io.to(code).emit("players", Object.values(rooms[code]));
 
     if (!Object.keys(rooms[code]).length) {
@@ -86,29 +139,25 @@ setInterval(() => {
       p.vx += p.inputX * SPEED * 0.16;
       p.vy += p.inputY * SPEED * 0.16;
 
-      const friction = 0.84;
-      p.vx *= friction;
-      p.vy *= friction;
+      p.vx *= 0.84;
+      p.vy *= 0.84;
 
-      const maxSpeed = SPEED;
       const speed = Math.hypot(p.vx, p.vy);
 
-      if (speed > maxSpeed) {
-        p.vx = p.vx / speed * maxSpeed;
-        p.vy = p.vy / speed * maxSpeed;
+      if (speed > SPEED) {
+        p.vx = p.vx / speed * SPEED;
+        p.vy = p.vy / speed * SPEED;
       }
 
-      p.x += p.vx * 0.033;
-      p.y += p.vy * 0.033;
+      p.x += p.vx * TICK / 1000;
+      p.y += p.vy * TICK / 1000;
 
       p.x = Math.max(RADIUS, Math.min(WORLD.width - RADIUS, p.x));
       p.y = Math.max(RADIUS, Math.min(WORLD.height - RADIUS, p.y));
     }
 
-    // Столкновение и отталкивание игроков
     if (players.length === 2) {
-      const a = players[0];
-      const b = players[1];
+      const [a, b] = players;
 
       let dx = b.x - a.x;
       let dy = b.y - a.y;
@@ -130,10 +179,12 @@ setInterval(() => {
         b.x += nx * overlap * 0.5;
         b.y += ny * overlap * 0.5;
 
-        const relative = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+        const relative =
+          (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
 
         if (relative < 0) {
           const impulse = -relative * 0.65;
+
           a.vx -= impulse * nx;
           a.vy -= impulse * ny;
           b.vx += impulse * nx;
@@ -149,7 +200,7 @@ setInterval(() => {
 
     io.to(code).emit("players", players);
   }
-}, 33);
+}, TICK);
 
 const PORT = process.env.PORT || 3000;
 
