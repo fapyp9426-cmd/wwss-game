@@ -14,7 +14,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: white;
+  background: #fff;
   font-family: Arial, sans-serif;
   touch-action: none;
 }
@@ -23,131 +23,173 @@ canvas {
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: none;
 }
 
 #menu {
   position: fixed;
   inset: 0;
-  z-index: 5;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffffef;
+  padding: 18px;
+  background: #ffffffed;
 }
 
 .panel {
-  width: min(340px, calc(100% - 36px));
-  padding: 30px 24px;
+  width: min(370px, 100%);
+  padding: 30px 25px;
   border: 1px solid #eee;
-  border-radius: 25px;
-  text-align: center;
+  border-radius: 26px;
   background: white;
-  box-shadow: 0 15px 50px #0000000c;
+  text-align: center;
+  box-shadow: 0 18px 60px #0000000c;
 }
 
 h1 {
   margin: 0 0 8px;
-  font-size: 29px;
-  letter-spacing: -1px;
   color: #242936;
+  font-size: 30px;
+  letter-spacing: -1.2px;
 }
 
 .subtitle {
-  color: #969ba6;
   margin-bottom: 24px;
+  color: #999eaa;
   font-size: 14px;
 }
 
-input, button {
-  font-size: 16px;
-  border-radius: 13px;
+.field-label {
+  display: block;
+  margin: 14px 0 7px;
+  text-align: left;
+  color: #656b76;
+  font-size: 12px;
+  font-weight: bold;
 }
 
 input {
   width: 100%;
   padding: 14px;
   border: 1px solid #e5e7eb;
+  border-radius: 13px;
   outline: none;
-  text-align: center;
-  margin-bottom: 10px;
   background: #fafafa;
+  font-size: 16px;
+  text-align: center;
+}
+
+input:focus {
+  border-color: #9ba7f5;
+}
+
+.colors {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+
+.color-choice {
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #e6e6e6;
+  cursor: pointer;
+}
+
+.color-choice.selected {
+  box-shadow: 0 0 0 3px #343b50;
 }
 
 #joinButton {
   width: 100%;
-  padding: 14px;
+  padding: 15px;
   border: 0;
+  border-radius: 14px;
   color: white;
   background: #5267e8;
+  font-size: 16px;
   font-weight: bold;
 }
 
+#joinButton:active {
+  transform: scale(.98);
+}
+
 #status {
-  color: #e05252;
-  font-size: 13px;
   min-height: 18px;
   margin: 12px 0 0;
+  color: #e05252;
+  font-size: 13px;
 }
 
 #top {
   position: fixed;
-  top: 16px;
+  top: 15px;
   left: 50%;
+  z-index: 3;
   transform: translateX(-50%);
-  z-index: 2;
   padding: 9px 16px;
   border: 1px solid #eee;
   border-radius: 30px;
   background: #ffffffdf;
   color: #656b76;
   font-size: 13px;
+  white-space: nowrap;
   pointer-events: none;
 }
 
 #joystick {
   display: none;
   position: fixed;
-  left: 25px;
-  bottom: 28px;
-  width: 130px;
-  height: 130px;
-  border-radius: 50%;
-  background: #eef0f5a8;
+  left: 24px;
+  bottom: 25px;
+  z-index: 4;
+  width: 132px;
+  height: 132px;
   border: 1px solid #e4e6ed;
-  z-index: 3;
+  border-radius: 50%;
+  background: #eef0f5aa;
   touch-action: none;
 }
 
 #stick {
   position: absolute;
-  width: 55px;
-  height: 55px;
-  left: 37px;
-  top: 37px;
+  left: 38px;
+  top: 38px;
+  width: 54px;
+  height: 54px;
+  border: 1px solid #e1e3e9;
   border-radius: 50%;
   background: white;
-  border: 1px solid #e1e3e9;
   box-shadow: 0 4px 14px #00000015;
   pointer-events: none;
 }
 
 #punchButton {
+  display: none;
   position: fixed;
-  right: 28px;
+  right: 25px;
   bottom: 38px;
-  width: 82px;
-  height: 82px;
+  z-index: 5;
+  width: 86px;
+  height: 86px;
+  border: 4px solid white;
   border-radius: 50%;
   background: #5267e8;
   color: white;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: bold;
-  border: 4px solid white;
   box-shadow: 0 5px 20px #5267e855;
-  z-index: 4;
   touch-action: none;
-  display: none;
+}
+
+#punchButton.cooldown {
+  opacity: .5;
 }
 
 @media (pointer: coarse) {
@@ -157,11 +199,11 @@ input {
 @media (pointer: fine) {
   #punchButton {
     display: block;
-    width: 65px;
-    height: 65px;
+    width: 66px;
+    height: 66px;
     right: 22px;
     bottom: 22px;
-    opacity: .8;
+    opacity: .75;
   }
 }
 </style>
@@ -176,13 +218,25 @@ input {
   <div class="panel">
     <h1>Little Stickmen</h1>
     <div class="subtitle">Маленький мир для двоих</div>
-    <input id="code" value="TEST123" maxlength="12" placeholder="Код комнаты">
+
+    <label class="field-label" for="nickname">ТВОЙ НИК</label>
+    <input id="nickname" maxlength="16" placeholder="Например, Alex" value="Игрок">
+
+    <label class="field-label" for="code">КОД КОМНАТЫ</label>
+    <input id="code" maxlength="12" value="TEST123">
+
+    <label class="field-label">ЦВЕТ ПЕРСОНАЖА</label>
+    <div class="colors" id="colors"></div>
+
     <button id="joinButton">Играть</button>
     <p id="status"></p>
   </div>
 </div>
 
-<div id="joystick"><div id="stick"></div></div>
+<div id="joystick">
+  <div id="stick"></div>
+</div>
+
 <button id="punchButton">УДАР</button>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -194,50 +248,101 @@ const ctx = canvas.getContext("2d");
 const menu = document.getElementById("menu");
 const statusText = document.getElementById("status");
 const topText = document.getElementById("top");
+const punchButton = document.getElementById("punchButton");
 
+const COLORS = [
+  "#5267e8", "#ef795f", "#29b58a", "#e0a33b",
+  "#ad72dc", "#39a9c8", "#e56b9b", "#687586"
+];
+
+let selectedColor = COLORS[0];
 let myId = null;
 let joined = false;
 let players = [];
-let smoothPlayers = {};
-let lastInput = 0;
-let lastTime = performance.now();
+let states = {};
+let particles = [];
+let effects = [];
+let cameraX = 900;
+let cameraY = 600;
 let width = innerWidth;
 let height = innerHeight;
 let dpr = 1;
+let lastFrame = performance.now();
+let lastInputSend = 0;
+let punchCooldown = 0;
 
 const keys = {};
-const input = { x: 0, y: 0 };
-const particles = [];
-const punchTimes = {};
-
-let cameraX = 900;
-let cameraY = 600;
-let punchCooldown = 0;
+const movement = { x: 0, y: 0 };
 
 function resize() {
   width = innerWidth;
   height = innerHeight;
   dpr = Math.min(devicePixelRatio || 1, 2);
+
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 addEventListener("resize", resize);
 resize();
 
+// Выбор цвета
+const colorContainer = document.getElementById("colors");
+
+COLORS.forEach((color, index) => {
+  const button = document.createElement("button");
+  button.className = "color-choice" + (index === 0 ? " selected" : "");
+  button.style.background = color;
+  button.type = "button";
+  button.setAttribute("aria-label", "Цвет " + (index + 1));
+
+  button.addEventListener("click", () => {
+    selectedColor = color;
+
+    document.querySelectorAll(".color-choice").forEach(el => {
+      el.classList.remove("selected");
+    });
+
+    button.classList.add("selected");
+  });
+
+  colorContainer.appendChild(button);
+});
+
+// Подключение
 function join() {
+  if (!socket.connected) {
+    statusText.textContent = "Нет соединения. Подожди немного...";
+    return;
+  }
+
   statusText.textContent = "Подключаемся...";
-  socket.emit("join", document.getElementById("code").value);
+
+  socket.emit("join", {
+    code: document.getElementById("code").value,
+    name: document.getElementById("nickname").value,
+    color: selectedColor
+  });
 }
 
 document.getElementById("joinButton").addEventListener("click", join);
+
 document.getElementById("code").addEventListener("keydown", e => {
+  if (e.key === "Enter") join();
+});
+
+document.getElementById("nickname").addEventListener("keydown", e => {
   if (e.key === "Enter") join();
 });
 
 socket.on("connect", () => {
   statusText.textContent = "";
+});
+
+socket.on("disconnect", () => {
+  if (joined) topText.textContent = "Соединение потеряно...";
 });
 
 socket.on("joined", id => {
@@ -246,58 +351,58 @@ socket.on("joined", id => {
   menu.style.display = "none";
 });
 
-socket.on("errorMessage", msg => {
-  statusText.textContent = msg;
+socket.on("errorMessage", message => {
+  statusText.textContent = message;
 });
 
 socket.on("players", list => {
   players = list;
+
   const alive = new Set(list.map(p => p.id));
 
-  for (const id of Object.keys(smoothPlayers)) {
-    if (!alive.has(id)) delete smoothPlayers[id];
+  for (const id of Object.keys(states)) {
+    if (!alive.has(id)) delete states[id];
   }
 
   for (const p of list) {
-    if (!smoothPlayers[p.id]) {
-      smoothPlayers[p.id] = {
-        x: p.x, y: p.y,
-        vx: p.vx || 0, vy: p.vy || 0,
-        tx: p.x, ty: p.y
+    if (!states[p.id]) {
+      states[p.id] = {
+        ...p,
+        tx: p.x,
+        ty: p.y,
+        serverVX: p.vx,
+        serverVY: p.vy,
+        downUntil: p.downUntil || 0,
+        angle: 0,
+        previousDown: false
       };
     }
 
-    const s = smoothPlayers[p.id];
+    const s = states[p.id];
+
+    s.name = p.name;
+    s.color = p.color;
     s.tx = p.x;
     s.ty = p.y;
-    s.svx = p.vx || 0;
-    s.svy = p.vy || 0;
+    s.serverVX = p.vx;
+    s.serverVY = p.vy;
+    s.faceX = p.faceX;
+    s.faceY = p.faceY;
+
+    const wasDown = s.downUntil > Date.now();
+    s.downUntil = p.downUntil || 0;
+
+    if (!wasDown && s.downUntil > Date.now()) {
+      s.fallStarted = performance.now();
+    }
   }
 
   topText.textContent = list.length === 2
-    ? "Вы и ваш друг"
+    ? "Вы и " + (list.find(p => p.id !== myId)?.name || "друг")
     : "Ожидание второго игрока...";
 });
 
-socket.on("punchEffect", data => {
-  punchTimes[data.id] = performance.now();
-  const p = smoothPlayers[data.id];
-
-  if (p) {
-    for (let i = 0; i < 9; i++) {
-      particles.push({
-        x: p.x + (Math.random() - .5) * 25,
-        y: p.y - 12 + (Math.random() - .5) * 20,
-        vx: (Math.random() - .5) * 110,
-        vy: (Math.random() - .5) * 110,
-        life: .45,
-        size: 2 + Math.random() * 3
-      });
-    }
-  }
-});
-
-// Клавиатура
+// Управление с клавиатуры
 addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
 
@@ -315,23 +420,44 @@ addEventListener("keyup", e => {
 });
 
 addEventListener("blur", () => {
-  for (const k in keys) keys[k] = false;
-  input.x = input.y = 0;
+  for (const key in keys) keys[key] = false;
+  movement.x = 0;
+  movement.y = 0;
 });
 
-// Джойстик
+function getMovement() {
+  let x = movement.x;
+  let y = movement.y;
+
+  if (keys["a"] || keys["arrowleft"]) x -= 1;
+  if (keys["d"] || keys["arrowright"]) x += 1;
+  if (keys["w"] || keys["arrowup"]) y -= 1;
+  if (keys["s"] || keys["arrowdown"]) y += 1;
+
+  const length = Math.hypot(x, y);
+
+  if (length > 1) {
+    x /= length;
+    y /= length;
+  }
+
+  return { x, y };
+}
+
+// Мобильный джойстик
 const joystick = document.getElementById("joystick");
 const stick = document.getElementById("stick");
 let joyPointer = null;
 
-function moveJoystick(e) {
+function updateJoystick(e) {
   const rect = joystick.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
 
   let dx = e.clientX - cx;
   let dy = e.clientY - cy;
-  const max = 38;
+
+  const max = 39;
   const length = Math.hypot(dx, dy);
 
   if (length > max) {
@@ -340,25 +466,26 @@ function moveJoystick(e) {
   }
 
   stick.style.transform = `translate(${dx}px, ${dy}px)`;
-  input.x = dx / max;
-  input.y = dy / max;
+  movement.x = dx / max;
+  movement.y = dy / max;
 }
 
 joystick.addEventListener("pointerdown", e => {
   joyPointer = e.pointerId;
   joystick.setPointerCapture(e.pointerId);
-  moveJoystick(e);
+  updateJoystick(e);
 });
 
 joystick.addEventListener("pointermove", e => {
-  if (e.pointerId === joyPointer) moveJoystick(e);
+  if (e.pointerId === joyPointer) updateJoystick(e);
 });
 
 function releaseJoystick(e) {
   if (e.pointerId !== joyPointer) return;
+
   joyPointer = null;
-  input.x = 0;
-  input.y = 0;
+  movement.x = 0;
+  movement.y = 0;
   stick.style.transform = "translate(0, 0)";
 }
 
@@ -369,78 +496,101 @@ joystick.addEventListener("pointercancel", releaseJoystick);
 function punch() {
   if (!joined || punchCooldown > 0) return;
 
-  punchCooldown = .65;
-  punchTimes[myId] = performance.now();
+  const me = states[myId];
+  if (!me || me.downUntil > Date.now()) return;
+
+  punchCooldown = .7;
+  me.punchAt = performance.now();
+
   socket.emit("punch");
 }
 
-document.getElementById("punchButton").addEventListener("pointerdown", e => {
+punchButton.addEventListener("pointerdown", e => {
   e.preventDefault();
   punch();
 });
 
-// Частицы
-function addDust(x, y) {
-  if (Math.random() > .2) return;
+socket.on("punchEffect", data => {
+  const now = performance.now();
+  effects.push({
+    x: data.x,
+    y: data.y,
+    start: now,
+    attacker: data.attacker,
+    target: data.target
+  });
+
+  // Вспышка и частицы удара
+  for (let i = 0; i < 18; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 65 + Math.random() * 210;
+
+    particles.push({
+      x: data.x,
+      y: data.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: .35 + Math.random() * .3,
+      maxLife: .65,
+      size: 2 + Math.random() * 4,
+      color: "#e9b64d"
+    });
+  }
+
+  if (data.target && states[data.target]) {
+    states[data.target].fallStarted = now;
+  }
+});
+
+// Частицы бега
+function addDust(x, y, color) {
+  if (Math.random() > .17) return;
 
   particles.push({
-    x: x + (Math.random() - .5) * 15,
-    y: y + 24,
-    vx: (Math.random() - .5) * 25,
-    vy: -Math.random() * 18,
-    life: .65,
-    size: 2 + Math.random() * 3
+    x: x + (Math.random() - .5) * 18,
+    y: y + 23,
+    vx: (Math.random() - .5) * 28,
+    vy: -10 - Math.random() * 20,
+    life: .4,
+    maxLife: .4,
+    size: 2 + Math.random() * 2,
+    color: "#cbd0d9"
   });
 }
 
-function getMovement() {
-  let x = input.x;
-  let y = input.y;
-
-  if (keys["w"] || keys["arrowup"]) y -= 1;
-  if (keys["s"] || keys["arrowdown"]) y += 1;
-  if (keys["a"] || keys["arrowleft"]) x -= 1;
-  if (keys["d"] || keys["arrowright"]) x += 1;
-
-  const len = Math.hypot(x, y);
-
-  if (len > 1) {
-    x /= len;
-    y /= len;
-  }
-
-  return { x, y };
-}
-
+// Обновление движения
 function update(dt, now) {
   punchCooldown = Math.max(0, punchCooldown - dt);
+  punchButton.classList.toggle("cooldown", punchCooldown > 0);
 
   if (!joined) return;
 
   const move = getMovement();
 
-  // Отправляем управление серверу, но не ждём ответа,
-  // чтобы локальный персонаж двигался сразу.
-  if (now - lastInput > 33) {
+  if (now - lastInputSend > 35) {
     socket.emit("input", move);
-    lastInput = now;
+    lastInputSend = now;
   }
 
-  const me = smoothPlayers[myId];
+  const me = states[myId];
 
   if (me) {
-    me.vx += move.x * 260 * .16 * (dt / .033);
-    me.vy += move.y * 260 * .16 * (dt / .033);
+    const down = me.downUntil > Date.now();
 
-    const friction = Math.pow(.84, dt / .033);
-    me.vx *= friction;
-    me.vy *= friction;
+    if (!down) {
+      const targetVX = move.x * 270;
+      const targetVY = move.y * 270;
 
-    const speed = Math.hypot(me.vx, me.vy);
+      me.vx += (targetVX - me.vx) * Math.min(1, dt * 12);
+      me.vy += (targetVY - me.vy) * Math.min(1, dt * 12);
 
-    if (speed > 260) {
-      me.vx = me.vx / speed * 260;
-      me.vy = me.vy / speed * 260;
+      if (Math.hypot(move.x, move.y) > .05) {
+        me.faceX = move.x;
+        me.faceY = move.y;
+      }
+    } else {
+      me.vx *= Math.pow(.985, dt / .02);
+      me.vy *= Math.pow(.985, dt / .02);
     }
 
     me.x += me.vx * dt;
@@ -449,40 +599,47 @@ function update(dt, now) {
     me.x = Math.max(25, Math.min(1775, me.x));
     me.y = Math.max(25, Math.min(1175, me.y));
 
-    // Мягко исправляем расхождение с сервером.
-    const errorX = me.tx - me.x;
-    const errorY = me.ty - me.y;
+    // Мягкая коррекция предсказанной позиции
+    const correction = Math.min(1, dt * 3);
+    me.x += (me.tx - me.x) * correction;
+    me.y += (me.ty - me.y) * correction;
 
-    me.x += errorX * Math.min(1, dt * 2.5);
-    me.y += errorY * Math.min(1, dt * 2.5);
-
-    me.vx += (me.svx - me.vx) * Math.min(1, dt * 1.8);
-    me.vy += (me.svy - me.vy) * Math.min(1, dt * 1.8);
-
-    if (Math.hypot(me.vx, me.vy) > 80) addDust(me.x, me.y);
+    // Не перезаписываем скорость каждый пакет сервера:
+    // это сохраняет плавное локальное управление.
+    if (Math.hypot(me.vx, me.vy) > 65) {
+      addDust(me.x, me.y, me.color);
+    }
   }
 
-  // Другие игроки плавно следуют за серверными координатами.
-  for (const [id, p] of Object.entries(smoothPlayers)) {
+  // Удалённые игроки плавно следуют за сервером
+  for (const [id, p] of Object.entries(states)) {
     if (id === myId) continue;
 
-    const blend = Math.min(1, dt * 12);
+    const blend = 1 - Math.exp(-dt * 13);
     p.x += (p.tx - p.x) * blend;
     p.y += (p.ty - p.y) * blend;
-    p.vx = p.svx;
-    p.vy = p.svy;
+    p.vx = p.serverVX;
+    p.vy = p.serverVY;
 
-    if (Math.hypot(p.vx, p.vy) > 80) addDust(p.x, p.y);
+    if (Math.hypot(p.vx, p.vy) > 65) {
+      addDust(p.x, p.y, p.color);
+    }
   }
 
+  // Частицы
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
+
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.life -= dt * 1.7;
+    p.vx *= Math.pow(.94, dt / .016);
+    p.vy *= Math.pow(.94, dt / .016);
+    p.life -= dt;
 
     if (p.life <= 0) particles.splice(i, 1);
   }
+
+  effects = effects.filter(e => now - e.start < 400);
 }
 
 function drawBackground() {
@@ -493,7 +650,7 @@ function drawBackground() {
   const left = cameraX - width / 2;
   const top = cameraY - height / 2;
 
-  ctx.fillStyle = "#f1f2f5";
+  ctx.fillStyle = "#f0f1f5";
 
   const startX = Math.floor(left / spacing) * spacing;
   const startY = Math.floor(top / spacing) * spacing;
@@ -501,36 +658,59 @@ function drawBackground() {
   for (let x = startX; x < left + width + spacing; x += spacing) {
     for (let y = startY; y < top + height + spacing; y += spacing) {
       ctx.beginPath();
-      ctx.arc(x - left, y - top, 1.3, 0, Math.PI * 2);
+      ctx.arc(x - left, y - top, 1.25, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 }
 
 function drawStickman(p, time) {
-  const speed = Math.hypot(p.vx, p.vy);
-  const moving = speed > 15;
-  const walk = moving ? Math.sin(time * .014) : Math.sin(time * .002) * .06;
-  const swing = moving ? walk * .65 : 0;
-  const bob = moving ? Math.abs(Math.sin(time * .014)) * 2.5 : Math.sin(time * .002) * 1.2;
+  const speed = Math.hypot(p.vx || 0, p.vy || 0);
+  const moving = speed > 18;
+  const down = p.downUntil > Date.now();
 
-  const isMe = p.id === myId;
-  const color = isMe ? "#5267e8" : "#ef795f";
-  const x = p.x;
-  const y = p.y + bob;
+  const walk = moving
+    ? Math.sin(time * .014)
+    : Math.sin(time * .002) * .06;
 
-  const punchAge = time - (punchTimes[p.id] || 0);
-  const punching = punchAge >= 0 && punchAge < 250;
-  const punchSwing = punching ? Math.sin(punchAge / 250 * Math.PI) : 0;
+  const swing = moving ? walk * .7 : 0;
+  const bob = moving ? Math.abs(Math.sin(time * .014)) * 2.7 : 0;
+
+  const punchAge = time - (p.punchAt || 0);
+  const punchPower = punchAge >= 0 && punchAge < 300
+    ? Math.sin(punchAge / 300 * Math.PI)
+    : 0;
+
+  // Плавное падение и вставание
+  let fall = 0;
+
+  if (down) {
+    const elapsed = time - (p.fallStarted || time);
+    fall = Math.min(1, elapsed / 220);
+  } else if (p.fallStarted) {
+    const elapsed = time - (p.downUntil - 1250);
+    fall = Math.max(0, 1 - Math.max(0, elapsed - 1250) / 300);
+  }
+
+  const color = p.color || "#5267e8";
 
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(p.x, p.y + bob);
 
   // Тень
-  ctx.fillStyle = "#0000000d";
+  ctx.fillStyle = "#00000010";
   ctx.beginPath();
-  ctx.ellipse(0, 27, 19 + speed * .012, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 27, down ? 27 : 19 + speed * .012, 5, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // Падение — поворот вокруг нижней части тела
+  if (down) {
+    ctx.translate(0, 5);
+    ctx.rotate(Math.min(1.48, fall * 1.48));
+    ctx.translate(0, -5);
+  } else if (fall > 0) {
+    ctx.rotate(fall * 1.48);
+  }
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -548,17 +728,18 @@ function drawStickman(p, time) {
   ctx.lineTo(11 - swing * 19, 28);
   ctx.stroke();
 
-  // Руки
+  // Левая рука
   ctx.beginPath();
   ctx.moveTo(0, -13);
   ctx.lineTo(-10 - swing * 10, -3);
   ctx.lineTo(-13 - swing * 13, 5);
   ctx.stroke();
 
+  // Правая рука с замахом
   ctx.beginPath();
   ctx.moveTo(0, -13);
-  ctx.lineTo(10 + swing * 10 + punchSwing * 22, -3 - punchSwing * 7);
-  ctx.lineTo(13 + swing * 13 + punchSwing * 30, 5 - punchSwing * 9);
+  ctx.lineTo(10 + swing * 10 + punchPower * 23, -3 - punchPower * 8);
+  ctx.lineTo(13 + swing * 13 + punchPower * 31, 5 - punchPower * 10);
   ctx.stroke();
 
   // Тело
@@ -584,26 +765,62 @@ function drawStickman(p, time) {
   ctx.arc(3.2, -26, 1.15, 0, Math.PI * 2);
   ctx.fill();
 
-  // Подпись
+  ctx.restore();
+
+  // Ник над персонажем
   ctx.fillStyle = "#747987";
   ctx.font = "12px Arial";
   ctx.textAlign = "center";
-  ctx.fillText(isMe ? "Ты" : "Друг", 0, -44);
+  ctx.fillText(p.name || "Игрок", p.x, p.y - 51);
+}
 
-  ctx.restore();
+function drawEffects(now) {
+  for (const e of effects) {
+    const age = (now - e.start) / 400;
+    const alpha = Math.max(0, 1 - age);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = "#f0b94e";
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, 9 + age * 32, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+
+    ctx.beginPath();
+    ctx.arc(
+      p.x,
+      p.y,
+      p.size * Math.max(.15, p.life / p.maxLife),
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
 }
 
 function frame(now) {
-  const dt = Math.min((now - lastTime) / 1000, .05);
-  lastTime = now;
+  const dt = Math.min((now - lastFrame) / 1000, .04);
+  lastFrame = now;
 
   update(dt, now);
 
-  const me = smoothPlayers[myId];
+  const me = states[myId];
 
   if (me) {
-    cameraX += (me.x - cameraX) * Math.min(1, dt * 5);
-    cameraY += (me.y - cameraY) * Math.min(1, dt * 5);
+    const cameraBlend = 1 - Math.exp(-dt * 5);
+    cameraX += (me.x - cameraX) * cameraBlend;
+    cameraY += (me.y - cameraY) * cameraBlend;
   }
 
   drawBackground();
@@ -615,24 +832,16 @@ function frame(now) {
   ctx.lineWidth = 3;
   ctx.strokeRect(0, 0, 1800, 1200);
 
-  for (const p of particles) {
-    ctx.globalAlpha = Math.max(0, p.life) * .4;
-    ctx.fillStyle = "#aeb4c2";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  drawEffects(now);
 
-  ctx.globalAlpha = 1;
-
-  const ordered = Object.values(smoothPlayers)
-    .sort((a, b) => a.y - b.y);
+  const ordered = Object.values(states).sort((a, b) => a.y - b.y);
 
   for (const p of ordered) {
     drawStickman(p, now);
   }
 
   ctx.restore();
+
   requestAnimationFrame(frame);
 }
 
