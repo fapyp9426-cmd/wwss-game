@@ -12,27 +12,70 @@ app.use(express.static("public"));
 const rooms = {};
 const WORLD = { width: 1800, height: 1200 };
 const RADIUS = 25;
-const SPEED = 260;
-const TICK = 33;
+const SPEED = 270;
+const TICK = 20;
+
+const COLORS = [
+  "#5267e8",
+  "#ef795f",
+  "#29b58a",
+  "#e0a33b",
+  "#ad72dc",
+  "#39a9c8",
+  "#e56b9b",
+  "#687586"
+];
+
+function cleanName(value) {
+  return String(value || "Игрок")
+    .replace(/[<>]/g, "")
+    .trim()
+    .slice(0, 16) || "Игрок";
+}
+
+function snapshot(room) {
+  return Object.values(room).map(p => ({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    x: p.x,
+    y: p.y,
+    vx: p.vx,
+    vy: p.vy,
+    faceX: p.faceX,
+    faceY: p.faceY,
+    downUntil: p.downUntil
+  }));
+}
 
 io.on("connection", socket => {
-  socket.on("join", rawCode => {
-    const code = String(rawCode || "").trim().toUpperCase();
-
-    if (!/^[A-Z0-9]{3,12}$/.test(code)) return;
+  socket.on("join", data => {
     if (socket.data.room) return;
+
+    const code = String(data?.code || "")
+      .trim().toUpperCase();
+
+    if (!/^[A-Z0-9]{3,12}$/.test(code)) {
+      socket.emit("errorMessage", "Код комнаты: 3–12 букв или цифр");
+      return;
+    }
 
     rooms[code] ??= {};
 
     if (Object.keys(rooms[code]).length >= 2) {
-      socket.emit("errorMessage", "Комната заполнена!");
+      socket.emit("errorMessage", "Комната уже заполнена!");
       return;
     }
 
     const count = Object.keys(rooms[code]).length;
+    const color = COLORS.includes(data?.color)
+      ? data.color
+      : COLORS[count];
 
     const player = {
       id: socket.id,
+      name: cleanName(data?.name),
+      color,
       x: count === 0 ? 650 : 850,
       y: 600,
       vx: 0,
@@ -41,6 +84,7 @@ io.on("connection", socket => {
       inputY: 0,
       faceX: count === 0 ? 1 : -1,
       faceY: 0,
+      downUntil: 0,
       lastPunch: 0
     };
 
@@ -49,13 +93,11 @@ io.on("connection", socket => {
     socket.join(code);
 
     socket.emit("joined", socket.id);
-    io.to(code).emit("players", Object.values(rooms[code]));
+    io.to(code).emit("players", snapshot(rooms[code]));
   });
 
   socket.on("input", data => {
-    const code = socket.data.room;
-    const player = rooms[code]?.[socket.id];
-
+    const player = rooms[socket.data.room]?.[socket.id];
     if (!player || !data) return;
 
     let x = Number(data.x) || 0;
@@ -71,9 +113,9 @@ io.on("connection", socket => {
     player.inputX = x;
     player.inputY = y;
 
-    if (length > 0.05) {
-      player.faceX = x / Math.max(length, 1);
-      player.faceY = y / Math.max(length, 1);
+    if (length > 0.05 && Date.now() >= player.downUntil) {
+      player.faceX = x / length;
+      player.faceY = y / length;
     }
   });
 
@@ -86,44 +128,56 @@ io.on("connection", socket => {
 
     const now = Date.now();
 
-    if (now - player.lastPunch < 650) return;
+    if (now < player.downUntil || now - player.lastPunch < 700) {
+      return;
+    }
 
     player.lastPunch = now;
 
+    let hitId = null;
+
     for (const other of Object.values(room)) {
       if (other.id === player.id) continue;
+      if (now < other.downUntil) continue;
 
       const dx = other.x - player.x;
       const dy = other.y - player.y;
       const distance = Math.hypot(dx, dy);
 
-      if (distance < 120) {
-        const nx = distance > 0.01 ? dx / distance : player.faceX;
-        const ny = distance > 0.01 ? dy / distance : player.faceY;
+      if (distance > 125) continue;
 
-        const facingDot = nx * player.faceX + ny * player.faceY;
+      const nx = distance > 0.01 ? dx / distance : player.faceX;
+      const ny = distance > 0.01 ? dy / distance : player.faceY;
+      const facing = nx * player.faceX + ny * player.faceY;
 
-        if (facingDot > -0.25) {
-          other.vx += nx * 420;
-          other.vy += ny * 420;
-        }
-      }
+      if (facing < -0.15) continue;
+
+      other.downUntil = now + 1250;
+      other.vx += nx * 470;
+      other.vy += ny * 470;
+
+      player.vx -= nx * 35;
+      player.vy -= ny * 35;
+
+      hitId = other.id;
+      break;
     }
 
     io.to(code).emit("punchEffect", {
-      id: player.id,
+      attacker: player.id,
+      target: hitId,
+      x: player.x + player.faceX * 38,
+      y: player.y + player.faceY * 38,
       time: now
     });
   });
 
   socket.on("disconnect", () => {
     const code = socket.data.room;
-
     if (!code || !rooms[code]) return;
 
     delete rooms[code][socket.id];
-
-    io.to(code).emit("players", Object.values(rooms[code]));
+    io.to(code).emit("players", snapshot(rooms[code]));
 
     if (!Object.keys(rooms[code]).length) {
       delete rooms[code];
@@ -131,26 +185,28 @@ io.on("connection", socket => {
   });
 });
 
+// Серверная физика
 setInterval(() => {
+  const dt = TICK / 1000;
+  const now = Date.now();
+
   for (const [code, room] of Object.entries(rooms)) {
     const players = Object.values(room);
 
     for (const p of players) {
-      p.vx += p.inputX * SPEED * 0.16;
-      p.vy += p.inputY * SPEED * 0.16;
+      if (now >= p.downUntil) {
+        const targetVX = p.inputX * SPEED;
+        const targetVY = p.inputY * SPEED;
 
-      p.vx *= 0.84;
-      p.vy *= 0.84;
-
-      const speed = Math.hypot(p.vx, p.vy);
-
-      if (speed > SPEED) {
-        p.vx = p.vx / speed * SPEED;
-        p.vy = p.vy / speed * SPEED;
+        p.vx += (targetVX - p.vx) * Math.min(1, dt * 12);
+        p.vy += (targetVY - p.vy) * Math.min(1, dt * 12);
+      } else {
+        p.vx *= 0.985;
+        p.vy *= 0.985;
       }
 
-      p.x += p.vx * TICK / 1000;
-      p.y += p.vy * TICK / 1000;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
 
       p.x = Math.max(RADIUS, Math.min(WORLD.width - RADIUS, p.x));
       p.y = Math.max(RADIUS, Math.min(WORLD.height - RADIUS, p.y));
@@ -158,7 +214,6 @@ setInterval(() => {
 
     if (players.length === 2) {
       const [a, b] = players;
-
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let distance = Math.hypot(dx, dy);
@@ -183,22 +238,17 @@ setInterval(() => {
           (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
 
         if (relative < 0) {
-          const impulse = -relative * 0.65;
+          const impulse = -relative * 0.55;
 
           a.vx -= impulse * nx;
           a.vy -= impulse * ny;
           b.vx += impulse * nx;
           b.vy += impulse * ny;
         }
-
-        a.x = Math.max(RADIUS, Math.min(WORLD.width - RADIUS, a.x));
-        a.y = Math.max(RADIUS, Math.min(WORLD.height - RADIUS, a.y));
-        b.x = Math.max(RADIUS, Math.min(WORLD.width - RADIUS, b.x));
-        b.y = Math.max(RADIUS, Math.min(WORLD.height - RADIUS, b.y));
       }
     }
 
-    io.to(code).emit("players", players);
+    io.to(code).emit("players", snapshot(room));
   }
 }, TICK);
 
