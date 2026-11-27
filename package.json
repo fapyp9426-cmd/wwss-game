@@ -1,7 +1,27 @@
 {
-  "scripts": {"start": "node server.js"},
+  "name": "base-wars",
+  "version": "1.0.0",
+  "description": "Полноценная многопользовательская 2D-игра BASE WARS с видом сбоку, техникой, авиацией и экономикой",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "socket.io",
+    "canvas",
+    "2d",
+    "arcade"
+  ],
+  "author": "Base Wars Dev Team",
+  "license": "MIT",
   "dependencies": {
-    "express": "^4.21.2",
-    "socket.io": "^4.8.1"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
