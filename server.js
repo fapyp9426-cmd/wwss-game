@@ -1,2533 +1,1571 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BASE WARS — Онлайн 2D Военная Аркада</title>
-  <script src="/socket.io/socket.io.js"></script>
-  <style>
-    :root {
-      --bg-dark: #0b111b;
-      --panel-bg: rgba(15, 23, 38, 0.88);
-      --panel-border: rgba(148, 178, 224, 0.22);
-      --blue-team: #2b8cff;
-      --blue-glow: rgba(43, 140, 255, 0.45);
-      --red-team: #ff3b5c;
-      --red-glow: rgba(255, 59, 92, 0.45);
-      --accent: #f5b82e;
-      --text-main: #f3f7ff;
-      --text-muted: #99abc9;
-      --success: #28d17c;
-      --danger: #ff4757;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-    }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--bg-dark);
-      color: var(--text-main);
-      font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
-    }
-
-    #gameCanvas {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      display: block;
-      cursor: crosshair;
-    }
-
-    /* Экраны интерфейса поверх Canvas */
-    .screen-overlay {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: radial-gradient(circle at 50% 35%, rgba(28, 46, 78, 0.72), rgba(7, 11, 19, 0.92));
-      backdrop-filter: blur(8px);
-      z-index: 20;
-    }
-
-    .screen-overlay.active {
-      display: flex;
-    }
-
-    .card {
-      width: 100%;
-      max-width: 560px;
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 18px;
-      padding: 28px 32px;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
-      animation: fadeUp 0.22s ease-out;
-    }
-
-    .card.wide {
-      max-width: 780px;
-    }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(12px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .brand-title {
-      text-align: center;
-      font-size: clamp(2.2rem, 4.5vw, 3.4rem);
-      font-weight: 900;
-      letter-spacing: 4px;
-      text-transform: uppercase;
-      background: linear-gradient(90deg, #5cb2ff 0%, #ffffff 50%, #ff657f 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      filter: drop-shadow(0 6px 22px rgba(43, 140, 255, 0.25));
-      margin-bottom: 6px;
-    }
-
-    .brand-subtitle {
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.92rem;
-      margin-bottom: 24px;
-    }
-
-    .form-group {
-      margin-bottom: 18px;
-    }
-
-    .form-label {
-      display: block;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 7px;
-      font-weight: 600;
-    }
-
-    input[type="text"], input[type="range"] {
-      width: 100%;
-    }
-
-    input[type="text"] {
-      background: rgba(9, 15, 26, 0.85);
-      border: 1px solid rgba(153, 171, 201, 0.3);
-      border-radius: 10px;
-      padding: 12px 14px;
-      color: var(--text-main);
-      font-size: 1rem;
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-
-    input[type="text"]:focus {
-      border-color: var(--blue-team);
-      box-shadow: 0 0 0 3px rgba(43, 140, 255, 0.2);
-    }
-
-    .btn-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 10px;
-    }
-
-    .btn {
-      border: none;
-      border-radius: 11px;
-      padding: 13px 18px;
-      font-size: 0.98rem;
-      font-weight: 700;
-      cursor: pointer;
-      color: var(--text-main);
-      background: rgba(45, 66, 102, 0.65);
-      border: 1px solid rgba(160, 188, 232, 0.22);
-      transition: transform 0.12s, background 0.15s, box-shadow 0.15s;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    .btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      background: rgba(65, 95, 145, 0.8);
-    }
-
-    .btn:active:not(:disabled) {
-      transform: translateY(0);
-    }
-
-    .btn:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-
-    .btn-primary {
-      grid-column: 1 / -1;
-      background: linear-gradient(135deg, #2b8cff, #1a63c9);
-      box-shadow: 0 8px 24px rgba(43, 140, 255, 0.35);
-      font-size: 1.06rem;
-      padding: 15px 20px;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      background: linear-gradient(135deg, #3e98ff, #2472de);
-    }
-
-    .btn-success {
-      background: linear-gradient(135deg, #22b86b, #15874c);
-      box-shadow: 0 6px 18px rgba(34, 184, 107, 0.28);
-    }
-
-    .btn-danger {
-      background: linear-gradient(135deg, #e03a52, #a81f34);
-    }
-
-    .btn-warning {
-      background: linear-gradient(135deg, #e5a41c, #b87e0a);
-      color: #10141d;
-    }
-
-    .join-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .join-row input {
-      text-transform: uppercase;
-      letter-spacing: 3px;
-      font-weight: 700;
-      text-align: center;
-      max-width: 170px;
-    }
-
-    .toast-banner {
-      position: fixed;
-      top: 18px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(20, 30, 48, 0.96);
-      border: 1px solid var(--accent);
-      color: var(--text-main);
-      padding: 10px 22px;
-      border-radius: 999px;
-      font-size: 0.92rem;
-      font-weight: 600;
-      z-index: 90;
-      display: none;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-
-    .toast-banner.show {
-      display: block;
-      animation: fadeUp 0.2s ease-out;
-    }
-
-    /* Лобби */
-    .room-code-box {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(9, 15, 26, 0.8);
-      border: 1px dashed rgba(245, 184, 46, 0.55);
-      border-radius: 12px;
-      padding: 12px 18px;
-      margin-bottom: 18px;
-    }
-
-    .room-code-val {
-      font-size: 1.55rem;
-      font-weight: 900;
-      letter-spacing: 4px;
-      color: var(--accent);
-    }
-
-    .slots-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-
-    .team-slot {
-      border-radius: 14px;
-      padding: 16px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(10, 17, 30, 0.72);
-      min-height: 150px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    .team-slot.blue {
-      border-color: rgba(43, 140, 255, 0.5);
-      box-shadow: inset 0 0 24px rgba(43, 140, 255, 0.08);
-    }
-
-    .team-slot.red {
-      border-color: rgba(255, 59, 92, 0.5);
-      box-shadow: inset 0 0 24px rgba(255, 59, 92, 0.08);
-    }
-
-    .team-badge {
-      font-size: 0.8rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
-    }
-
-    .team-slot.blue .team-badge { color: #5eb0ff; }
-    .team-slot.red .team-badge { color: #ff6e86; }
-
-    .slot-nick {
-      font-size: 1.15rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .slot-meta {
-      font-size: 0.82rem;
-      color: var(--text-muted);
-    }
-
-    .ready-pill {
-      display: inline-block;
-      margin-top: 10px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      font-weight: 700;
-    }
-
-    .ready-pill.yes {
-      background: rgba(40, 209, 124, 0.2);
-      color: var(--success);
-      border: 1px solid rgba(40, 209, 124, 0.4);
-    }
-
-    .ready-pill.no {
-      background: rgba(153, 171, 201, 0.15);
-      color: var(--text-muted);
-      border: 1px solid rgba(153, 171, 201, 0.25);
-    }
-
-    /* Игровой HUD */
-    #hud {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      display: none;
-      z-index: 10;
-    }
-
-    #hud.active {
-      display: block;
-    }
-
-    .hud-top-bar {
-      position: absolute;
-      top: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 16px;
-      padding: 8px 18px;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-    }
-
-    .score-box {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 800;
-      font-size: 1.15rem;
-    }
-
-    .score-box.blue { color: #64b5ff; }
-    .score-box.red { color: #ff7088; }
-
-    .timer-box {
-      font-family: monospace;
-      font-size: 1.25rem;
-      font-weight: 800;
-      padding: 4px 12px;
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.35);
-      color: var(--accent);
-    }
-
-    .flag-status-bar {
-      position: absolute;
-      top: 74px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 280px;
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 7px 12px;
-      text-align: center;
-    }
-
-    .flag-label {
-      font-size: 0.76rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      margin-bottom: 5px;
-    }
-
-    .flag-meter {
-      position: relative;
-      height: 8px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.12);
-      overflow: hidden;
-    }
-
-    .flag-meter-center {
-      position: absolute;
-      left: 50%;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: rgba(255, 255, 255, 0.5);
-      transform: translateX(-50%);
-    }
-
-    .flag-meter-fill {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 0%;
-      transition: width 0.08s linear;
-    }
-
-    /* Нижний левый блок: здоровье, кредиты, техника, кнопки */
-    .hud-bottom-left {
-      position: absolute;
-      left: 16px;
-      bottom: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      min-width: 270px;
-    }
-
-    .status-panel {
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 14px;
-      padding: 12px 14px;
-    }
-
-    .hp-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .hp-track {
-      height: 11px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.12);
-      overflow: hidden;
-      margin-bottom: 10px;
-    }
-
-    .hp-fill {
-      height: 100%;
-      width: 100%;
-      background: linear-gradient(90deg, #28d17c, #72f2b0);
-      transition: width 0.1s linear;
-    }
-
-    .credits-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 800;
-      color: var(--accent);
-      font-size: 1rem;
-    }
-
-    .vehicle-badge {
-      font-size: 0.82rem;
-      color: #9dc7ff;
-      margin-top: 6px;
-    }
-
-    .hud-actions {
-      display: flex;
-      gap: 8px;
-      pointer-events: auto;
-    }
-
-    .hud-btn {
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      color: var(--text-main);
-      border-radius: 11px;
-      padding: 9px 14px;
-      font-size: 0.86rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
-    }
-
-    .hud-btn:hover {
-      background: rgba(45, 72, 118, 0.92);
-      transform: translateY(-1px);
-    }
-
-    /* Нижний правый блок: мини-карта */
-    .minimap-wrap {
-      position: absolute;
-      right: 16px;
-      bottom: 16px;
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 14px;
-      padding: 8px;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
-    }
-
-    #minimapCanvas {
-      display: block;
-      border-radius: 8px;
-      background: #0c1728;
-    }
-
-    .minimap-caption {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      text-align: center;
-      margin-top: 4px;
-    }
-
-    /* Подсказки управления */
-    .controls-hint {
-      position: absolute;
-      top: 14px;
-      right: 16px;
-      background: rgba(15, 23, 38, 0.72);
-      border: 1px solid rgba(148, 178, 224, 0.16);
-      border-radius: 12px;
-      padding: 8px 12px;
-      font-size: 0.76rem;
-      color: var(--text-muted);
-      line-height: 1.45;
-      text-align: right;
-    }
-
-    /* Экран возрождения (3 сек) */
-    #respawnBanner {
-      position: fixed;
-      top: 132px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(24, 14, 22, 0.92);
-      border: 1px solid rgba(255, 71, 87, 0.65);
-      border-radius: 14px;
-      padding: 12px 24px;
-      font-size: 1.05rem;
-      font-weight: 800;
-      color: #ff8594;
-      display: none;
-      z-index: 15;
-      pointer-events: none;
-    }
-
-    #respawnBanner.active {
-      display: block;
-    }
-
-    /* Модальное окно магазина */
-    #shopModal {
-      position: fixed;
-      inset: 0;
-      background: rgba(5, 9, 17, 0.76);
-      backdrop-filter: blur(5px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      z-index: 30;
-    }
-
-    #shopModal.active {
-      display: flex;
-    }
-
-    .shop-card {
-      width: 100%;
-      max-width: 820px;
-      max-height: 86vh;
-      overflow-y: auto;
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 18px;
-      padding: 24px 28px;
-    }
-
-    .shop-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
-    .shop-tabs {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 18px;
-    }
-
-    .tab-btn {
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: 1px solid rgba(153, 171, 201, 0.25);
-      background: rgba(15, 24, 41, 0.8);
-      color: var(--text-muted);
-      font-weight: 700;
-      font-size: 0.85rem;
-      cursor: pointer;
-    }
-
-    .tab-btn.active {
-      background: var(--blue-team);
-      color: #fff;
-      border-color: transparent;
-    }
-
-    .shop-items-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(225px, 1fr));
-      gap: 14px;
-    }
-
-    .shop-item {
-      background: rgba(9, 15, 27, 0.85);
-      border: 1px solid rgba(153, 171, 201, 0.2);
-      border-radius: 14px;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .shop-item-title {
-      font-weight: 800;
-      font-size: 1rem;
-      margin-bottom: 4px;
-    }
-
-    .shop-item-desc {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      line-height: 1.35;
-    }
-
-    .shop-item-stats {
-      font-size: 0.76rem;
-      color: #9ec7ff;
-    }
-
-    .shop-item-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 4px;
-    }
-
-    .price-tag {
-      font-weight: 800;
-      color: var(--accent);
-    }
-
-    /* Таблица счёта (Tab) и Большая карта (M) */
-    .overlay-panel {
-      position: fixed;
-      inset: 0;
-      background: rgba(6, 10, 18, 0.82);
-      backdrop-filter: blur(6px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 35;
-      padding: 20px;
-    }
-
-    .overlay-panel.active {
-      display: flex;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 12px;
-      font-size: 0.9rem;
-    }
-
-    th, td {
-      padding: 10px 12px;
-      text-align: left;
-      border-bottom: 1px solid rgba(153, 171, 201, 0.16);
-    }
-
-    th {
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      text-transform: uppercase;
-    }
-
-    #fullMapCanvas {
-      width: 100%;
-      max-width: 920px;
-      height: auto;
-      border-radius: 12px;
-      border: 1px solid var(--panel-border);
-      background: #0b1627;
-    }
-
-    .disconnect-banner {
-      position: fixed;
-      bottom: 120px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(180, 35, 55, 0.92);
-      color: #fff;
-      padding: 10px 22px;
-      border-radius: 12px;
-      font-weight: 700;
-      z-index: 40;
-      display: none;
-    }
-
-    .disconnect-banner.active {
-      display: block;
-    }
-
-    @media (max-width: 720px) {
-      .slots-grid, .btn-grid {
-        grid-template-columns: 1fr;
+/**
+ * BASE WARS — Серверно-авторитетный игровой сервер (Node.js + Express + Socket.IO)
+ * Частота симуляции: 30 Гц | Частота рассылки состояния: 20 Гц
+ */
+
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  },
+  pingInterval: 10000,
+  pingTimeout: 20000
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ============================================================================
+// БАЛАНС И КОНФИГУРАЦИЯ МИРА
+// ============================================================================
+const CONFIG = {
+  TICK_RATE: 30,
+  BROADCAST_RATE: 20,
+  WORLD_WIDTH: 7200,
+  WORLD_HEIGHT: 1600,
+  GROUND_BASE_Y: 1280,
+  MATCH_DURATION: 600, // 10 минут (600 секунд)
+  RESPAWN_TIME: 3.0,   // 3 секунды до возрождения
+
+  // Экономика
+  START_CREDITS: 350,
+  PASSIVE_INCOME_PER_SEC: 8,
+  FLAG_HOLD_CREDITS_PER_SEC: 12,
+  FLAG_HOLD_POINTS_PER_SEC: 2.5,
+  FLAG_CAPTURE_POINTS: 50,
+  FLAG_CAPTURE_CREDITS: 150,
+  ELIMINATION_CREDITS: 120,
+  ELIMINATION_POINTS: 25,
+  VEHICLE_DESTROY_POINTS: 40,
+
+  // Солдат
+  SOLDIER: {
+    WIDTH: 34,
+    HEIGHT: 64,
+    MAX_HP: 100,
+    WALK_SPEED: 260,
+    RUN_SPEED: 410,
+    JUMP_FORCE: -660,
+    GRAVITY: 1650,
+    FIRE_COOLDOWN: 0.22,
+    BULLET_SPEED: 1350,
+    BULLET_DAMAGE: 22
+  },
+
+  // Флаг
+  FLAG: {
+    X: 3600,
+    RADIUS: 240,
+    CAPTURE_SPEED: 0.22 // ~4.5 сек на полный захват от 0 до 1
+  },
+
+  // Магазин и техника
+  SHOP: {
+    buggy: {
+      id: 'buggy',
+      name: 'Лёгкий багги',
+      category: 'ground',
+      cost: 250,
+      maxHp: 260,
+      speed: 620,
+      accel: 1200,
+      width: 116,
+      height: 54,
+      fireCooldown: 0.25,
+      damage: 20,
+      projectileSpeed: 1400,
+      limitPerTeam: 2,
+      rewardCredits: 150
+    },
+    apc: {
+      id: 'apc',
+      name: 'Бронемашина',
+      category: 'ground',
+      cost: 500,
+      maxHp: 560,
+      speed: 410,
+      accel: 750,
+      width: 156,
+      height: 72,
+      fireCooldown: 0.45,
+      damage: 42,
+      projectileSpeed: 1250,
+      limitPerTeam: 2,
+      rewardCredits: 280
+    },
+    tank: {
+      id: 'tank',
+      name: 'Тяжёлый танк',
+      category: 'ground',
+      cost: 850,
+      maxHp: 1100,
+      speed: 255,
+      accel: 450,
+      width: 184,
+      height: 82,
+      fireCooldown: 1.35,
+      damage: 145,
+      splashRadius: 110,
+      projectileSpeed: 1150,
+      limitPerTeam: 1,
+      rewardCredits: 480
+    },
+    helicopter: {
+      id: 'helicopter',
+      name: 'Ударный вертолёт',
+      category: 'air',
+      cost: 750,
+      maxHp: 460,
+      speed: 520,
+      liftSpeed: 420,
+      width: 170,
+      height: 68,
+      fireCooldown: 0.35,
+      damage: 36,
+      projectileSpeed: 1300,
+      limitPerTeam: 1,
+      rewardCredits: 420
+    },
+    plane: {
+      id: 'plane',
+      name: 'Беспилотный самолёт',
+      category: 'air',
+      cost: 650,
+      maxHp: 340,
+      minSpeed: 360,
+      maxSpeed: 780,
+      width: 164,
+      height: 48,
+      fireCooldown: 0.42,
+      damage: 48,
+      projectileSpeed: 1450,
+      limitPerTeam: 1,
+      rewardCredits: 380
+    },
+    aa_turret: {
+      id: 'aa_turret',
+      name: 'Автоматическая ПВО',
+      category: 'defense',
+      cost: 450,
+      maxHp: 500,
+      range: 1350,
+      fireCooldown: 0.95,
+      damage: 55,
+      missileSpeed: 1250,
+      limitPerTeam: 2,
+      rewardCredits: 250
+    },
+    base_shield: {
+      id: 'base_shield',
+      name: 'Укрепление и медблок базы',
+      category: 'upgrade',
+      cost: 400,
+      maxLevel: 3
+    }
+  }
+};
+
+// ============================================================================
+// ГЕНЕРАЦИЯ РЕЛЬЕФА И ПРЕПЯТСТВИЙ КАРТЫ (ЕДИНАЯ ДЛЯ СЕРВЕРА И КЛИЕНТА)
+// ============================================================================
+function getTerrainHeightAt(x) {
+  const clampedX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH, x));
+  // Ровные площадки на базах (0..950 и 6250..7200) и в центре (3250..3950)
+  if (clampedX < 950 || clampedX > 6250) {
+    return CONFIG.GROUND_BASE_Y;
+  }
+  if (clampedX > 3250 && clampedX < 3950) {
+    return CONFIG.GROUND_BASE_Y - 35; // Небольшое возвышение центрального плато
+  }
+
+  // Плавные холмы и низины между базами и центром
+  const norm = (clampedX - 950) / (6250 - 950); // 0..1
+  const envelope = Math.sin(norm * Math.PI);
+  const hill1 = Math.sin((clampedX - 950) * 0.0024) * 95;
+  const hill2 = Math.cos((clampedX - 950) * 0.0055) * 32;
+  return Math.round(CONFIG.GROUND_BASE_Y - (hill1 + hill2) * envelope);
+}
+
+const MAP_PLATFORMS = [
+  // Укрепления и платформы на синей базе
+  { id: 'b_tower_1', x: 520, y: 1120, w: 180, h: 22, type: 'bridge' },
+  { id: 'b_bunker', x: 1080, y: 1170, w: 150, h: 24, type: 'bunker' },
+  // Укрепления на подступах к центру
+  { id: 'mid_left_plat', x: 2450, y: 1110, w: 220, h: 22, type: 'platform' },
+  { id: 'mid_center_arch', x: 3470, y: 1080, w: 260, h: 22, type: 'bridge' },
+  { id: 'mid_right_plat', x: 4530, y: 1110, w: 220, h: 22, type: 'platform' },
+  // Укрепления на красной базе
+  { id: 'r_bunker', x: 5970, y: 1170, w: 150, h: 24, type: 'bunker' },
+  { id: 'r_tower_1', x: 6500, y: 1120, w: 180, h: 22, type: 'bridge' }
+];
+
+// ============================================================================
+// ХРАНИЛИЩЕ КОМНАТ И СЕССИЙ
+// ============================================================================
+const rooms = new Map();
+const socketToSession = new Map();
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return rooms.has(code) ? generateRoomCode() : code;
+}
+
+function generateToken() {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+function sanitizeNickname(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.replace(/[<>&"'/\\]/g, '').trim().slice(0, 18);
+}
+
+function createInitialMatchState() {
+  return {
+    timeLeft: CONFIG.MATCH_DURATION,
+    scores: { blue: 0, red: 0 },
+    flag: {
+      x: CONFIG.FLAG.X,
+      y: getTerrainHeightAt(CONFIG.FLAG.X),
+      progress: 0, // -1 (полностью синий) .. 0 (нейтральный) .. +1 (полностью красный)
+      owner: null, // 'blue' | 'red' | null
+      contested: false,
+      capturingTeam: null
+    },
+    baseUpgrades: {
+      blue: 0,
+      red: 0
+    },
+    vehicles: [],
+    projectiles: [],
+    events: [],
+    nextEntityId: 1
+  };
+}
+
+function createPlayerObject(socketId, token, nickname, team, isHost) {
+  const spawnX = team === 'blue' ? 340 : CONFIG.WORLD_WIDTH - 340;
+  const spawnY = getTerrainHeightAt(spawnX) - CONFIG.SOLDIER.HEIGHT;
+  return {
+    id: socketId,
+    token,
+    nickname,
+    team,
+    isHost,
+    ready: false,
+    connected: true,
+    disconnectTimer: null,
+
+    // Состояние бойца
+    x: spawnX,
+    y: spawnY,
+    vx: 0,
+    vy: 0,
+    facing: team === 'blue' ? 1 : -1,
+    aimAngle: team === 'blue' ? 0 : Math.PI,
+    hp: CONFIG.SOLDIER.MAX_HP,
+    maxHp: CONFIG.SOLDIER.MAX_HP,
+    alive: true,
+    respawnTimer: 0,
+    onGround: true,
+    animState: 'idle',
+    vehicleId: null,
+    fireCooldown: 0,
+    hitFlash: 0,
+
+    // Экономика и статистика
+    credits: CONFIG.START_CREDITS,
+    totalCreditsEarned: CONFIG.START_CREDITS,
+    kills: 0,
+    deaths: 0,
+    captures: 0,
+    vehiclesDestroyed: 0,
+
+    // Текущий ввод клиента
+    input: {
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+      sprint: false,
+      fire: false,
+      aimX: spawnX + (team === 'blue' ? 200 : -200),
+      aimY: spawnY
+    },
+    lastRateReset: Date.now(),
+    msgCount: 0
+  };
+}
+
+function getRoomLobbyPayload(room) {
+  return {
+    code: room.code,
+    status: room.status,
+    hostToken: room.hostToken,
+    players: room.players.map(p => ({
+      nickname: p.nickname,
+      team: p.team,
+      ready: p.ready,
+      connected: p.connected,
+      isHost: p.token === room.hostToken
+    }))
+  };
+}
+
+// ============================================================================
+// ЛОГИКА МАТЧА И СИМУЛЯЦИЯ
+// ============================================================================
+function startMatch(room) {
+  room.status = 'playing';
+  room.match = createInitialMatchState();
+  room.winner = null;
+
+  room.players.forEach(p => {
+    const spawnX = p.team === 'blue' ? 340 : CONFIG.WORLD_WIDTH - 340;
+    p.x = spawnX;
+    p.y = getTerrainHeightAt(spawnX) - CONFIG.SOLDIER.HEIGHT;
+    p.vx = 0;
+    p.vy = 0;
+    p.facing = p.team === 'blue' ? 1 : -1;
+    p.hp = CONFIG.SOLDIER.MAX_HP;
+    p.maxHp = CONFIG.SOLDIER.MAX_HP;
+    p.alive = true;
+    p.respawnTimer = 0;
+    p.vehicleId = null;
+    p.credits = CONFIG.START_CREDITS;
+    p.totalCreditsEarned = CONFIG.START_CREDITS;
+    p.kills = 0;
+    p.deaths = 0;
+    p.captures = 0;
+    p.vehiclesDestroyed = 0;
+  });
+
+  // Стартовые защитные турели ПВО на базах не ставятся бесплатно, чтобы игрок сам покупал их в магазине,
+  // но добавим по 1 лёгкому разведывательному багги на каждой базе для динамичного старта
+  spawnVehicle(room, 'blue', 'buggy', 620);
+  spawnVehicle(room, 'red', 'buggy', CONFIG.WORLD_WIDTH - 620);
+
+  io.to(room.code).emit('match_started', {
+    config: {
+      WORLD_WIDTH: CONFIG.WORLD_WIDTH,
+      WORLD_HEIGHT: CONFIG.WORLD_HEIGHT,
+      GROUND_BASE_Y: CONFIG.GROUND_BASE_Y,
+      FLAG_X: CONFIG.FLAG.X,
+      FLAG_RADIUS: CONFIG.FLAG.RADIUS,
+      SHOP: CONFIG.SHOP,
+      PLATFORMS: MAP_PLATFORMS
+    }
+  });
+}
+
+function spawnVehicle(room, team, type, customX = null) {
+  const spec = CONFIG.SHOP[type];
+  if (!spec) return null;
+
+  const baseX = customX !== null
+    ? customX
+    : (team === 'blue' ? 560 + Math.random() * 240 : CONFIG.WORLD_WIDTH - 560 - Math.random() * 240);
+
+  const groundY = getTerrainHeightAt(baseX);
+  const isAir = spec.category === 'air';
+  const y = isAir ? groundY - spec.height - 6 : groundY - spec.height;
+
+  const vehicle = {
+    id: `veh_${room.match.nextEntityId++}`,
+    type,
+    team,
+    x: baseX,
+    y,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    facing: team === 'blue' ? 1 : -1,
+    hp: spec.maxHp,
+    maxHp: spec.maxHp,
+    driverToken: null,
+    fireCooldown: 0,
+    targetId: null, // Для ПВО
+    rotorAngle: 0
+  };
+
+  room.match.vehicles.push(vehicle);
+  return vehicle;
+}
+
+function addMatchEvent(room, type, data) {
+  room.match.events.push({
+    id: room.match.nextEntityId++,
+    type,
+    ...data
+  });
+}
+
+function damageSoldier(room, target, amount, attackerPlayer) {
+  if (!target.alive) return;
+
+  // Бонус защиты базы при прокачке укреплений
+  const nearOwnBase = (target.team === 'blue' && target.x < 1100) ||
+                      (target.team === 'red' && target.x > CONFIG.WORLD_WIDTH - 1100);
+  const upgradeLvl = room.match.baseUpgrades[target.team] || 0;
+  const mitigation = nearOwnBase ? (1 - upgradeLvl * 0.12) : 1;
+
+  target.hp -= Math.round(amount * mitigation);
+  target.hitFlash = 0.2;
+
+  if (target.hp <= 0) {
+    target.hp = 0;
+    target.alive = false;
+    target.respawnTimer = CONFIG.RESPAWN_TIME;
+    target.deaths += 1;
+    target.vx = 0;
+    target.vy = 0;
+
+    // Если был в технике — освобождаем её
+    if (target.vehicleId) {
+      const veh = room.match.vehicles.find(v => v.id === target.vehicleId);
+      if (veh && veh.driverToken === target.token) {
+        veh.driverToken = null;
       }
-      .controls-hint {
-        display: none;
+      target.vehicleId = null;
+    }
+
+    addMatchEvent(room, 'soldier_down', {
+      x: target.x + CONFIG.SOLDIER.WIDTH / 2,
+      y: target.y + CONFIG.SOLDIER.HEIGHT / 2,
+      team: target.team,
+      victim: target.nickname,
+      attacker: attackerPlayer ? attackerPlayer.nickname : 'Система'
+    });
+
+    if (attackerPlayer && attackerPlayer.team !== target.team) {
+      attackerPlayer.kills += 1;
+      attackerPlayer.credits += CONFIG.ELIMINATION_CREDITS;
+      attackerPlayer.totalCreditsEarned += CONFIG.ELIMINATION_CREDITS;
+      room.match.scores[attackerPlayer.team] += CONFIG.ELIMINATION_POINTS;
+    }
+  }
+}
+
+function damageVehicle(room, vehicle, amount, attackerPlayer) {
+  vehicle.hp -= amount;
+  if (vehicle.hp <= 0) {
+    vehicle.hp = 0;
+    const spec = CONFIG.SHOP[vehicle.type];
+
+    // Высаживаем водителя, если был внутри (он получает небольшой урон от катапультирования)
+    if (vehicle.driverToken) {
+      const driver = room.players.find(p => p.token === vehicle.driverToken);
+      if (driver) {
+        driver.vehicleId = null;
+        driver.y = Math.min(driver.y, getTerrainHeightAt(driver.x) - CONFIG.SOLDIER.HEIGHT - 10);
+        driver.vy = -320;
+        damageSoldier(room, driver, 30, attackerPlayer);
       }
     }
-  </style>
-</head>
-<body>
-  <canvas id="gameCanvas"></canvas>
 
-  <div id="toastBanner" class="toast-banner"></div>
-  <div id="disconnectBanner" class="disconnect-banner">Второй игрок отключился от сети... Ожидание переподключения</div>
+    addMatchEvent(room, 'explosion', {
+      x: vehicle.x,
+      y: vehicle.y + (spec ? spec.height / 2 : 30),
+      size: vehicle.type === 'tank' ? 'large' : 'medium',
+      team: vehicle.team
+    });
 
-  <!-- ГЛАВНОЕ МЕНЮ -->
-  <div id="mainMenuScreen" class="screen-overlay active">
-    <div class="card">
-      <div class="brand-title">BASE WARS</div>
-      <div class="brand-subtitle">Онлайн 2D боковая военная аркада • Техника, авиация, ПВО и флаг</div>
+    if (attackerPlayer && attackerPlayer.team !== vehicle.team && spec) {
+      attackerPlayer.vehiclesDestroyed += 1;
+      attackerPlayer.credits += spec.rewardCredits;
+      attackerPlayer.totalCreditsEarned += spec.rewardCredits;
+      room.match.scores[attackerPlayer.team] += CONFIG.VEHICLE_DESTROY_POINTS;
+    }
 
-      <div class="form-group">
-        <label class="form-label" for="nicknameInput">Ваш никнейм (обязательно)</label>
-        <input type="text" id="nicknameInput" maxlength="18" placeholder="Например: Commander_Alex" />
-      </div>
+    room.match.vehicles = room.match.vehicles.filter(v => v.id !== vehicle.id);
+  }
+}
 
-      <div class="btn-grid">
-        <button class="btn btn-primary" id="btnQuickMatch">⚔ Играть онлайн</button>
-        <button class="btn btn-success" id="btnCreateRoom">＋ Создать комнату</button>
-        <button class="btn" id="btnOpenSettings">⚙ Настройки</button>
-        <button class="btn" id="btnOpenAbout">ℹ Об игре</button>
-      </div>
+function updateRoomSimulation(room, dt) {
+  if (room.status !== 'playing' || !room.match) return;
+  const m = room.match;
 
-      <div class="join-row">
-        <input type="text" id="roomCodeInput" maxlength="5" placeholder="КОД" />
-        <button class="btn btn-warning" id="btnJoinRoom" style="flex:1;">Присоединиться по коду</button>
-      </div>
-    </div>
-  </div>
+  // 1. Таймер матча
+  m.timeLeft -= dt;
+  if (m.timeLeft <= 0) {
+    m.timeLeft = 0;
+    finishMatch(room);
+    return;
+  }
 
-  <!-- ЛОББИ КОМНАТЫ -->
-  <div id="lobbyScreen" class="screen-overlay">
-    <div class="card wide">
-      <h2 style="text-align:center; margin-bottom:14px;">Лобби матча BASE WARS</h2>
+  // 2. Пассивный доход и регенерация на своей базе (при наличии улучшения)
+  room.players.forEach(p => {
+    const income = CONFIG.PASSIVE_INCOME_PER_SEC * dt;
+    p.credits += income;
+    p.totalCreditsEarned += income;
 
-      <div class="room-code-box">
-        <div>
-          <div style="font-size:0.78rem; color:var(--text-muted);">КОД КОМНАТЫ</div>
-          <div id="lobbyCodeDisplay" class="room-code-val">-----</div>
-        </div>
-        <button class="btn" id="btnCopyCode">Скопировать код</button>
-      </div>
-
-      <div class="slots-grid">
-        <div id="slotBlue" class="team-slot blue"></div>
-        <div id="slotRed" class="team-slot red"></div>
-      </div>
-
-      <div class="btn-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-        <button class="btn" id="btnSwitchTeam">⇄ Сменить команду</button>
-        <button class="btn btn-success" id="btnToggleReady">✔ Готов</button>
-        <button class="btn btn-primary" id="btnStartMatch" style="grid-column:auto;">▶ Начать матч</button>
-        <button class="btn btn-danger" id="btnLeaveLobby">✕ Выйти</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- НАСТРОЙКИ -->
-  <div id="settingsScreen" class="screen-overlay">
-    <div class="card">
-      <h2 style="margin-bottom:18px;">Настройки</h2>
-
-      <div class="form-group">
-        <label class="form-label">Громкость звука: <span id="volumeLabel">60%</span></label>
-        <input type="range" id="volumeSlider" min="0" max="100" value="60" />
-      </div>
-
-      <div class="form-group">
-        <button class="btn" id="btnToggleMute" style="width:100%;">🔊 Звук включён</button>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">
-          <input type="checkbox" id="chkShowHint" checked /> Показывать подсказки управления в бою
-        </label>
-      </div>
-
-      <button class="btn btn-primary" id="btnCloseSettings">Сохранить и закрыть</button>
-    </div>
-  </div>
-
-  <!-- ОБ ИГРЕ -->
-  <div id="aboutScreen" class="screen-overlay">
-    <div class="card">
-      <h2 style="margin-bottom:12px;">Об игре BASE WARS</h2>
-      <p style="color:var(--text-muted); font-size:0.9rem; line-height:1.55; margin-bottom:14px;">
-        <strong>BASE WARS</strong> — динамичная боковая 2D-аркада с серверно-авторитетным онлайн-мультиплеером.
-        Сражайтесь 1 на 1 (Синяя команда против Красной), захватывайте центральный флаг, зарабатывайте кредиты,
-        покупайте наземную технику, ударные вертолёты, беспилотные самолёты и автоматические системы ПВО.
-      </p>
-      <ul style="color:var(--text-main); font-size:0.86rem; line-height:1.65; margin-left:18px; margin-bottom:18px;">
-        <li>Длительность матча: <strong>10 минут</strong>. Побеждает команда с большим числом очков.</li>
-        <li>При потере здоровья солдат возрождается на своей базе через <strong>3 секунды</strong>.</li>
-        <li>ПВО автоматически атакует <strong>только вражескую авиацию</strong> и не трогает свои самолёты.</li>
-      </ul>
-      <button class="btn btn-primary" id="btnCloseAbout">Назад в меню</button>
-    </div>
-  </div>
-
-  <!-- ИГРОВОЙ HUD -->
-  <div id="hud">
-    <div class="hud-top-bar">
-      <div class="score-box blue"><span>СИНИЕ</span> <span id="hudBlueScore">0</span></div>
-      <div id="hudTimer" class="timer-box">10:00</div>
-      <div class="score-box red"><span id="hudRedScore">0</span> <span>КРАСНЫЕ</span></div>
-    </div>
-
-    <div class="flag-status-bar">
-      <div id="flagStatusText" class="flag-label">ЦЕНТРАЛЬНЫЙ ФЛАГ: НЕЙТРАЛЕН</div>
-      <div class="flag-meter">
-        <div id="flagMeterFill" class="flag-meter-fill"></div>
-        <div class="flag-meter-center"></div>
-      </div>
-    </div>
-
-    <div id="controlsHint" class="controls-hint">
-      <strong>A / D</strong> — движение • <strong>W / Space</strong> — прыжок • <strong>Shift</strong> — бег<br/>
-      <strong>ЛКМ</strong> — выстрел • <strong>E</strong> — сесть/выйти из техники • <strong>B</strong> — магазин<br/>
-      <strong>Tab</strong> — счёт • <strong>M</strong> — карта • <strong>Esc</strong> — настройки
-    </div>
-
-    <div class="hud-bottom-left">
-      <div class="status-panel">
-        <div class="hp-row">
-          <span id="hudPlayerName">Игрок</span>
-          <span id="hudHpText">100 / 100 HP</span>
-        </div>
-        <div class="hp-track">
-          <div id="hudHpFill" class="hp-fill"></div>
-        </div>
-        <div class="credits-row">
-          <span>КРЕДИТЫ</span>
-          <span id="hudCredits">350 CR</span>
-        </div>
-        <div id="hudVehicleInfo" class="vehicle-badge">Пеший солдат</div>
-      </div>
-
-      <div class="hud-actions">
-        <button class="hud-btn" id="btnOpenShop">🛒 Магазин [B]</button>
-        <button class="hud-btn" id="btnQuickMute">🔊</button>
-        <button class="hud-btn" id="btnGameSettings">⚙ [Esc]</button>
-      </div>
-    </div>
-
-    <div class="minimap-wrap">
-      <canvas id="minimapCanvas" width="210" height="62"></canvas>
-      <div class="minimap-caption">МИНИ-КАРТА [M — обзор]</div>
-    </div>
-  </div>
-
-  <div id="respawnBanner">ВОЗРОЖДЕНИЕ ЧЕРЕЗ <span id="respawnCountdown">3.0</span> СЕК</div>
-
-  <!-- МАГАЗИН -->
-  <div id="shopModal">
-    <div class="shop-card">
-      <div class="shop-header">
-        <div>
-          <h2>Магазин снабжения</h2>
-          <div style="font-size:0.84rem; color:var(--text-muted);">
-            Доступно кредитов: <strong id="shopCreditsVal" style="color:var(--accent);">0 CR</strong>
-          </div>
-        </div>
-        <button class="btn btn-danger" id="btnCloseShop">Закрыть [B / Esc]</button>
-      </div>
-
-      <div class="shop-tabs">
-        <button class="tab-btn active" data-cat="all">Всё</button>
-        <button class="tab-btn" data-cat="ground">Наземная техника</button>
-        <button class="tab-btn" data-cat="air">Авиация</button>
-        <button class="tab-btn" data-cat="defense">Оборона</button>
-        <button class="tab-btn" data-cat="upgrade">Улучшения</button>
-      </div>
-
-      <div id="shopItemsGrid" class="shop-items-grid"></div>
-    </div>
-  </div>
-
-  <!-- ТАБЛИЦА СЧЁТА (TAB) -->
-  <div id="scoreboardOverlay" class="overlay-panel">
-    <div class="card wide">
-      <h2>Таблица счёта матча</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Игрок</th>
-            <th>Команда</th>
-            <th>Устранений</th>
-            <th>Захватов</th>
-            <th>Техники сбито</th>
-            <th>Кредиты</th>
-          </tr>
-        </thead>
-        <tbody id="scoreboardBody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- БОЛЬШАЯ КАРТА (M) -->
-  <div id="fullMapOverlay" class="overlay-panel">
-    <div class="card wide" style="text-align:center;">
-      <h2 style="margin-bottom:12px;">Тактическая карта сектора (7200 × 1600)</h2>
-      <canvas id="fullMapCanvas" width="720" height="190"></canvas>
-      <div style="margin-top:14px;">
-        <button class="btn" id="btnCloseFullMap">Закрыть карту [M]</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ЭКРАН РЕЗУЛЬТАТОВ МАТЧА -->
-  <div id="resultsScreen" class="screen-overlay">
-    <div class="card wide">
-      <h2 id="resultsTitle" style="text-align:center; font-size:2rem; margin-bottom:8px;">МАТЧ ЗАВЕРШЁН</h2>
-      <div id="resultsScores" style="text-align:center; font-size:1.25rem; font-weight:800; margin-bottom:16px;"></div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Игрок</th>
-            <th>Команда</th>
-            <th>Устранений</th>
-            <th>Захватов</th>
-            <th>Техники сбито</th>
-            <th>Заработано кредитов</th>
-          </tr>
-        </thead>
-        <tbody id="resultsTableBody"></tbody>
-      </table>
-
-      <div class="btn-grid" style="margin-top:20px;">
-        <button class="btn btn-success" id="btnPlayAgain">↻ Сыграть ещё раз</button>
-        <button class="btn btn-danger" id="btnBackToMenu">⌂ Выйти в меню</button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    // ========================================================================
-    // ЗВУКОВОЙ ДВИЖОК (WEB AUDIO API — БЕЗ ВНЕШНИХ ФАЙЛОВ)
-    // ========================================================================
-    const SoundFX = (() => {
-      let ctx = null;
-      let volume = 0.6;
-      let muted = false;
-      let lastStepTime = 0;
-      let lastEngineTime = 0;
-
-      function ensureCtx() {
-        if (!ctx) {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          if (AudioContext) ctx = new AudioContext();
-        }
-        if (ctx && ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
+    const upgradeLvl = m.baseUpgrades[p.team] || 0;
+    if (upgradeLvl > 0 && p.alive && !p.vehicleId) {
+      const onBase = (p.team === 'blue' && p.x < 950) || (p.team === 'red' && p.x > CONFIG.WORLD_WIDTH - 950);
+      if (onBase && p.hp < p.maxHp) {
+        p.hp = Math.min(p.maxHp, p.hp + upgradeLvl * 14 * dt);
       }
+    }
+  });
 
-      function setVolume(v) {
-        volume = Math.max(0, Math.min(1, v));
+  // 3. Обновление игроков (солдат и управление техникой)
+  room.players.forEach(p => {
+    if (p.hitFlash > 0) p.hitFlash = Math.max(0, p.hitFlash - dt);
+    if (p.fireCooldown > 0) p.fireCooldown = Math.max(0, p.fireCooldown - dt);
+
+    // Возрождение через 3 секунды
+    if (!p.alive) {
+      p.respawnTimer -= dt;
+      if (p.respawnTimer <= 0) {
+        const spawnX = p.team === 'blue' ? 340 : CONFIG.WORLD_WIDTH - 340;
+        p.x = spawnX;
+        p.y = getTerrainHeightAt(spawnX) - CONFIG.SOLDIER.HEIGHT;
+        p.vx = 0;
+        p.vy = 0;
+        p.hp = p.maxHp;
+        p.alive = true;
+        p.respawnTimer = 0;
+        p.animState = 'idle';
+        addMatchEvent(room, 'respawn', { x: p.x + 17, y: p.y + 32, team: p.team });
       }
+      return;
+    }
 
-      function setMuted(m) {
-        muted = Boolean(m);
+    // Если игрок управляет техникой
+    if (p.vehicleId) {
+      const veh = m.vehicles.find(v => v.id === p.vehicleId);
+      if (!veh) {
+        p.vehicleId = null;
+      } else {
+        updateControlledVehicle(room, p, veh, dt);
+        return;
       }
+    }
 
-      function isMuted() {
-        return muted;
+    // Физика пешего солдата
+    const inp = p.input;
+    const moveDir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+    const maxSpeed = inp.sprint ? CONFIG.SOLDIER.RUN_SPEED : CONFIG.SOLDIER.WALK_SPEED;
+
+    if (moveDir !== 0) {
+      p.vx += moveDir * 2400 * dt;
+      if (Math.abs(p.vx) > maxSpeed) {
+        p.vx = Math.sign(p.vx) * maxSpeed;
       }
+    } else {
+      p.vx *= Math.pow(0.0008, dt);
+      if (Math.abs(p.vx) < 8) p.vx = 0;
+    }
 
-      function getGain() {
-        return muted ? 0 : volume;
-      }
+    // Прыжок
+    if (inp.up && p.onGround) {
+      p.vy = CONFIG.SOLDIER.JUMP_FORCE;
+      p.onGround = false;
+      addMatchEvent(room, 'jump', { x: p.x + 17, y: p.y + CONFIG.SOLDIER.HEIGHT });
+    }
 
-      function playTone(freq, endFreq, duration, type = 'sine', peakGain = 0.14) {
-        if (muted || volume <= 0) return;
-        ensureCtx();
-        if (!ctx) return;
+    // Гравитация
+    p.vy += CONFIG.SOLDIER.GRAVITY * dt;
 
-        const now = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, now);
-        if (endFreq !== null) {
-          osc.frequency.exponentialRampToValueAtTime(Math.max(30, endFreq), now + duration);
-        }
+    const prevBottom = p.y + CONFIG.SOLDIER.HEIGHT;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
 
-        gain.gain.setValueAtTime(0.001, now);
-        gain.gain.linearRampToValueAtTime(peakGain * volume, now + 0.012);
-        gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+    // Границы карты
+    p.x = Math.max(40, Math.min(CONFIG.WORLD_WIDTH - 40 - CONFIG.SOLDIER.WIDTH, p.x));
 
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + duration + 0.02);
-      }
-
-      function playNoise(duration, peakGain = 0.18, filterFreq = 900) {
-        if (muted || volume <= 0) return;
-        ensureCtx();
-        if (!ctx) return;
-
-        const sampleRate = ctx.sampleRate;
-        const length = Math.floor(sampleRate * duration);
-        const buffer = ctx.createBuffer(1, length, sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < length; i++) {
-          data[i] = (Math.random() * 2 - 1) * (1 - i / length);
-        }
-
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.value = filterFreq;
-
-        const gain = ctx.createGain();
-        const now = ctx.currentTime;
-        gain.gain.setValueAtTime(peakGain * volume, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-        src.connect(filter);
-        filter.connect(gain);
-        gain.connect(ctx.destination);
-        src.start(now);
-      }
-
-      return {
-        setVolume,
-        setMuted,
-        isMuted,
-        step() {
-          const now = performance.now();
-          if (now - lastStepTime < 230) return;
-          lastStepTime = now;
-          playTone(130, 75, 0.06, 'triangle', 0.08);
-        },
-        jump() {
-          playTone(210, 480, 0.16, 'sine', 0.12);
-        },
-        shoot(kind = 'blaster') {
-          if (kind === 'shell') {
-            playNoise(0.28, 0.24, 520);
-            playTone(140, 42, 0.22, 'sawtooth', 0.16);
-          } else if (kind === 'aa_missile') {
-            playTone(540, 960, 0.18, 'sawtooth', 0.1);
-          } else {
-            playTone(760, 220, 0.11, 'sawtooth', 0.1);
-          }
-        },
-        hit(large = false) {
-          playNoise(large ? 0.42 : 0.14, large ? 0.28 : 0.12, large ? 480 : 1200);
-          playTone(large ? 110 : 280, 45, large ? 0.35 : 0.09, 'square', large ? 0.15 : 0.07);
-        },
-        engineTick(isAir = false) {
-          const now = performance.now();
-          if (now - lastEngineTime < 190) return;
-          lastEngineTime = now;
-          playTone(isAir ? 165 : 72, isAir ? 190 : 58, 0.14, isAir ? 'sawtooth' : 'triangle', 0.05);
-        },
-        matchStart() {
-          playTone(440, null, 0.14, 'triangle', 0.14);
-          setTimeout(() => playTone(660, null, 0.24, 'triangle', 0.15), 140);
-        },
-        flagCapture() {
-          playTone(523.25, null, 0.13, 'triangle', 0.13);
-          setTimeout(() => playTone(659.25, null, 0.13, 'triangle', 0.13), 130);
-          setTimeout(() => playTone(783.99, null, 0.28, 'triangle', 0.15), 260);
-        },
-        matchEnd(won) {
-          if (won) {
-            playTone(523, null, 0.16, 'triangle', 0.16);
-            setTimeout(() => playTone(659, null, 0.16, 'triangle', 0.16), 160);
-            setTimeout(() => playTone(784, null, 0.4, 'triangle', 0.18), 320);
-          } else {
-            playTone(392, 260, 0.35, 'sawtooth', 0.12);
+    // Коллизии с платформами (односторонние сверху)
+    let landed = false;
+    if (p.vy >= 0 && !inp.down) {
+      const centerX = p.x + CONFIG.SOLDIER.WIDTH / 2;
+      const newBottom = p.y + CONFIG.SOLDIER.HEIGHT;
+      for (const plat of MAP_PLATFORMS) {
+        if (centerX >= plat.x && centerX <= plat.x + plat.w) {
+          if (prevBottom <= plat.y + 8 && newBottom >= plat.y) {
+            p.y = plat.y - CONFIG.SOLDIER.HEIGHT;
+            p.vy = 0;
+            landed = true;
+            break;
           }
         }
+      }
+    }
+
+    // Коллизия с рельефом земли
+    const groundY = getTerrainHeightAt(p.x + CONFIG.SOLDIER.WIDTH / 2);
+    if (p.y + CONFIG.SOLDIER.HEIGHT >= groundY) {
+      p.y = groundY - CONFIG.SOLDIER.HEIGHT;
+      p.vy = 0;
+      landed = true;
+    }
+    p.onGround = landed;
+
+    // Прицеливание
+    const headX = p.x + CONFIG.SOLDIER.WIDTH / 2;
+    const headY = p.y + 22;
+    p.aimAngle = Math.atan2(inp.aimY - headY, inp.aimX - headX);
+    p.facing = Math.cos(p.aimAngle) >= 0 ? 1 : -1;
+
+    // Анимация
+    if (!p.onGround) {
+      p.animState = p.vy < 0 ? 'jump' : 'fall';
+    } else if (Math.abs(p.vx) > 290) {
+      p.animState = 'run';
+    } else if (Math.abs(p.vx) > 20) {
+      p.animState = 'walk';
+    } else {
+      p.animState = 'idle';
+    }
+
+    // Стрельба из энергетического бластера
+    if (inp.fire && p.fireCooldown <= 0) {
+      p.fireCooldown = CONFIG.SOLDIER.FIRE_COOLDOWN;
+      const muzzleX = headX + Math.cos(p.aimAngle) * 32;
+      const muzzleY = headY + Math.sin(p.aimAngle) * 32;
+      spawnProjectile(room, {
+        ownerToken: p.token,
+        team: p.team,
+        kind: 'blaster',
+        x: muzzleX,
+        y: muzzleY,
+        vx: Math.cos(p.aimAngle) * CONFIG.SOLDIER.BULLET_SPEED,
+        vy: Math.sin(p.aimAngle) * CONFIG.SOLDIER.BULLET_SPEED,
+        damage: CONFIG.SOLDIER.BULLET_DAMAGE,
+        splashRadius: 0,
+        life: 1.1
+      });
+    }
+  });
+
+  // 4. Обновление бесхозной техники, авиации и ПВО
+  m.vehicles.forEach(veh => {
+    const spec = CONFIG.SHOP[veh.type];
+    if (!spec) return;
+    if (veh.fireCooldown > 0) veh.fireCooldown = Math.max(0, veh.fireCooldown - dt);
+
+    // Автоматическая система ПВО (стреляет ТОЛЬКО по вражеской авиации!)
+    if (veh.type === 'aa_turret') {
+      const groundY = getTerrainHeightAt(veh.x);
+      veh.y = groundY - spec.height;
+
+      // Поиск ближайшей вражеской воздушной цели
+      let bestTarget = null;
+      let bestDist = spec.range;
+
+      for (const candidate of m.vehicles) {
+        const candSpec = CONFIG.SHOP[candidate.type];
+        // СТРОГОЕ ПРАВИЛО: ПВО никогда не атакует свою команду и атакует только авиацию
+        if (candidate.team !== veh.team && candSpec && candSpec.category === 'air') {
+          const dist = Math.hypot(candidate.x - veh.x, candidate.y - veh.y);
+          if (dist <= bestDist) {
+            bestDist = dist;
+            bestTarget = candidate;
+          }
+        }
+      }
+
+      if (bestTarget) {
+        veh.targetId = bestTarget.id;
+        const aimAngle = Math.atan2(bestTarget.y - (veh.y + 10), bestTarget.x - veh.x);
+        veh.angle = aimAngle;
+        veh.facing = Math.cos(aimAngle) >= 0 ? 1 : -1;
+
+        if (veh.fireCooldown <= 0) {
+          veh.fireCooldown = spec.fireCooldown;
+          const ownerPlayer = room.players.find(pl => pl.team === veh.team);
+          spawnProjectile(room, {
+            ownerToken: ownerPlayer ? ownerPlayer.token : null,
+            team: veh.team,
+            kind: 'aa_missile',
+            targetVehicleId: bestTarget.id,
+            x: veh.x + Math.cos(aimAngle) * 35,
+            y: veh.y + 10 + Math.sin(aimAngle) * 35,
+            vx: Math.cos(aimAngle) * spec.missileSpeed,
+            vy: Math.sin(aimAngle) * spec.missileSpeed,
+            damage: spec.damage,
+            splashRadius: 55,
+            life: 2.2
+          });
+        }
+      } else {
+        veh.targetId = null;
+      }
+      return;
+    }
+
+    // Если в технике нет водителя
+    if (!veh.driverToken) {
+      if (spec.category === 'ground') {
+        veh.vx *= Math.pow(0.01, dt);
+        veh.x += veh.vx * dt;
+        const gY = getTerrainHeightAt(veh.x);
+        veh.y = gY - spec.height;
+        const slope = getTerrainHeightAt(veh.x + 25) - getTerrainHeightAt(veh.x - 25);
+        veh.angle = Math.atan2(slope, 50) * 0.6;
+      } else if (spec.category === 'air') {
+        // Плавное снижение беспилотной техники при отсутствии пилота
+        veh.vx *= Math.pow(0.2, dt);
+        veh.vy = Math.min(220, veh.vy + 350 * dt);
+        veh.x += veh.vx * dt;
+        veh.y += veh.vy * dt;
+        const gY = getTerrainHeightAt(veh.x);
+        if (veh.y + spec.height >= gY) {
+          veh.y = gY - spec.height;
+          veh.vy = 0;
+          veh.angle = 0;
+        }
+      }
+    }
+  });
+
+  // 5. Обновление снарядов и проверка попаданий
+  updateProjectiles(room, dt);
+
+  // 6. Захват центральной зоны и флага
+  updateFlagAndScore(room, dt);
+}
+
+function updateControlledVehicle(room, player, veh, dt) {
+  const spec = CONFIG.SHOP[veh.type];
+  const inp = player.input;
+  const moveX = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+  const moveY = (inp.down ? 1 : 0) - (inp.up ? 1 : 0);
+
+  if (spec.category === 'ground') {
+    if (moveX !== 0) {
+      veh.vx += moveX * spec.accel * dt;
+      veh.vx = Math.max(-spec.speed, Math.min(spec.speed, veh.vx));
+      veh.facing = moveX;
+    } else {
+      veh.vx *= Math.pow(0.005, dt);
+      if (Math.abs(veh.vx) < 10) veh.vx = 0;
+    }
+
+    veh.x += veh.vx * dt;
+    veh.x = Math.max(120, Math.min(CONFIG.WORLD_WIDTH - 120, veh.x));
+    const groundY = getTerrainHeightAt(veh.x);
+    veh.y = groundY - spec.height;
+
+    const slope = getTerrainHeightAt(veh.x + 30) - getTerrainHeightAt(veh.x - 30);
+    veh.angle = Math.atan2(slope, 60) * 0.65;
+  } else if (veh.type === 'helicopter') {
+    veh.rotorAngle += 28 * dt;
+    if (moveX !== 0) {
+      veh.vx += moveX * 680 * dt;
+      veh.vx = Math.max(-spec.speed, Math.min(spec.speed, veh.vx));
+      veh.facing = moveX;
+    } else {
+      veh.vx *= Math.pow(0.08, dt);
+    }
+
+    if (moveY !== 0) {
+      veh.vy += moveY * 680 * dt;
+      veh.vy = Math.max(-spec.liftSpeed, Math.min(spec.liftSpeed, veh.vy));
+    } else {
+      veh.vy *= Math.pow(0.08, dt);
+    }
+
+    veh.x += veh.vx * dt;
+    veh.y += veh.vy * dt;
+    veh.angle = (veh.vx / spec.speed) * 0.24;
+
+    const minY = 120;
+    const maxY = getTerrainHeightAt(veh.x) - spec.height;
+    veh.x = Math.max(140, Math.min(CONFIG.WORLD_WIDTH - 140, veh.x));
+    if (veh.y < minY) { veh.y = minY; veh.vy = 0; }
+    if (veh.y > maxY) { veh.y = maxY; veh.vy = 0; }
+  } else if (veh.type === 'plane') {
+    // Самолёт с неподвижным крылом: постоянная подъёмная тяга, тангаж по W/S и разворот по A/D
+    if (moveX !== 0 && moveX !== veh.facing) {
+      veh.facing = moveX;
+    }
+    const targetSpeed = inp.sprint ? spec.maxSpeed : 560;
+    veh.vx += (veh.facing * targetSpeed - veh.vx) * 2.5 * dt;
+
+    if (moveY !== 0) {
+      veh.vy += moveY * 650 * dt;
+      veh.vy = Math.max(-360, Math.min(360, veh.vy));
+    } else {
+      veh.vy *= Math.pow(0.05, dt);
+    }
+
+    veh.x += veh.vx * dt;
+    veh.y += veh.vy * dt;
+
+    // Разворот у краёв карты
+    if (veh.x < 180) { veh.x = 180; veh.facing = 1; veh.vx = Math.abs(veh.vx); }
+    if (veh.x > CONFIG.WORLD_WIDTH - 180) { veh.x = CONFIG.WORLD_WIDTH - 180; veh.facing = -1; veh.vx = -Math.abs(veh.vx); }
+
+    const minY = 100;
+    const maxY = getTerrainHeightAt(veh.x) - spec.height - 8;
+    if (veh.y < minY) { veh.y = minY; veh.vy = 0; }
+    if (veh.y > maxY) { veh.y = maxY; veh.vy = 0; }
+
+    veh.angle = Math.atan2(veh.vy, Math.abs(veh.vx)) * veh.facing * 0.7;
+  }
+
+  // Синхронизация позиции игрока с техникой
+  player.x = veh.x - CONFIG.SOLDIER.WIDTH / 2;
+  player.y = veh.y + spec.height / 2 - CONFIG.SOLDIER.HEIGHT / 2;
+  player.vx = veh.vx;
+  player.vy = veh.vy;
+  player.facing = veh.facing;
+
+  const aimAngle = Math.atan2(inp.aimY - (veh.y + spec.height * 0.4), inp.aimX - veh.x);
+  player.aimAngle = aimAngle;
+
+  // Стрельба из техники
+  if (inp.fire && veh.fireCooldown <= 0) {
+    veh.fireCooldown = spec.fireCooldown;
+    let shootAngle = aimAngle;
+
+    // Для самолёта ограничиваем угол пушки передней полусферой / пикированием
+    if (veh.type === 'plane') {
+      const baseDir = veh.facing === 1 ? 0.15 : Math.PI - 0.15;
+      shootAngle = baseDir + Math.sin(aimAngle) * 0.45;
+    }
+
+    const muzzleX = veh.x + Math.cos(shootAngle) * (spec.width * 0.48);
+    const muzzleY = veh.y + spec.height * 0.35 + Math.sin(shootAngle) * 24;
+
+    spawnProjectile(room, {
+      ownerToken: player.token,
+      team: veh.team,
+      kind: veh.type === 'tank' ? 'shell' : (spec.category === 'air' ? 'air_cannon' : 'heavy_bolt'),
+      x: muzzleX,
+      y: muzzleY,
+      vx: Math.cos(shootAngle) * spec.projectileSpeed + veh.vx * 0.25,
+      vy: Math.sin(shootAngle) * spec.projectileSpeed,
+      damage: spec.damage,
+      splashRadius: spec.splashRadius || 0,
+      life: 1.6
+    });
+  }
+}
+
+function spawnProjectile(room, proj) {
+  if (room.match.projectiles.length > 140) {
+    room.match.projectiles.shift();
+  }
+  room.match.projectiles.push({
+    id: room.match.nextEntityId++,
+    ...proj
+  });
+}
+
+function updateProjectiles(room, dt) {
+  const m = room.match;
+  const remaining = [];
+
+  for (const p of m.projectiles) {
+    p.life -= dt;
+    if (p.life <= 0) continue;
+
+    // Самонаведение ракет ПВО на вражескую воздушную цель
+    if (p.kind === 'aa_missile' && p.targetVehicleId) {
+      const target = m.vehicles.find(v => v.id === p.targetVehicleId);
+      if (target && target.team !== p.team) {
+        const desiredAngle = Math.atan2(target.y - p.y, target.x - p.x);
+        const speed = Math.hypot(p.vx, p.vy);
+        p.vx += (Math.cos(desiredAngle) * speed - p.vx) * 5.5 * dt;
+        p.vy += (Math.sin(desiredAngle) * speed - p.vy) * 5.5 * dt;
+      }
+    } else if (p.kind === 'shell') {
+      p.vy += 320 * dt; // Лёгкая баллистика танкового снаряда
+    }
+
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    if (p.x < 0 || p.x > CONFIG.WORLD_WIDTH || p.y < 0) continue;
+
+    const attacker = room.players.find(pl => pl.token === p.ownerToken) || null;
+    let hit = false;
+
+    // 1. Попадание в землю
+    const groundY = getTerrainHeightAt(p.x);
+    if (p.y >= groundY) {
+      p.y = groundY;
+      hit = true;
+    }
+
+    // 2. Попадание во вражескую технику
+    if (!hit) {
+      for (const veh of m.vehicles) {
+        if (veh.team === p.team) continue;
+        const spec = CONFIG.SHOP[veh.type];
+        if (!spec) continue;
+        const halfW = spec.width / 2;
+        if (p.x >= veh.x - halfW && p.x <= veh.x + halfW && p.y >= veh.y && p.y <= veh.y + spec.height) {
+          damageVehicle(room, veh, p.damage, attacker);
+          hit = true;
+          break;
+        }
+      }
+    }
+
+    // 3. Попадание во вражеского пешего солдата
+    if (!hit) {
+      for (const pl of room.players) {
+        if (!pl.alive || pl.team === p.team || pl.vehicleId) continue;
+        if (p.x >= pl.x && p.x <= pl.x + CONFIG.SOLDIER.WIDTH &&
+            p.y >= pl.y && p.y <= pl.y + CONFIG.SOLDIER.HEIGHT) {
+          damageSoldier(room, pl, p.damage, attacker);
+          hit = true;
+          break;
+        }
+      }
+    }
+
+    if (hit) {
+      // Урон по площади (для танковых снарядов и ракет ПВО)
+      if (p.splashRadius > 0) {
+        for (const pl of room.players) {
+          if (!pl.alive || pl.team === p.team || pl.vehicleId) continue;
+          const dist = Math.hypot((pl.x + 17) - p.x, (pl.y + 32) - p.y);
+          if (dist <= p.splashRadius) {
+            damageSoldier(room, pl, p.damage * (1 - dist / (p.splashRadius * 1.3)), attacker);
+          }
+        }
+        for (const veh of [...m.vehicles]) {
+          if (veh.team === p.team) continue;
+          const dist = Math.hypot(veh.x - p.x, veh.y - p.y);
+          if (dist <= p.splashRadius) {
+            damageVehicle(room, veh, p.damage * 0.65, attacker);
+          }
+        }
+      }
+
+      addMatchEvent(room, 'hit', {
+        x: p.x,
+        y: p.y,
+        kind: p.kind,
+        team: p.team
+      });
+    } else {
+      remaining.push(p);
+    }
+  }
+
+  m.projectiles = remaining;
+}
+
+function updateFlagAndScore(room, dt) {
+  const flag = room.match.flag;
+  let bluePresent = false;
+  let redPresent = false;
+  let bluePlayer = null;
+  let redPlayer = null;
+
+  for (const p of room.players) {
+    if (!p.alive) continue;
+    const centerX = p.x + CONFIG.SOLDIER.WIDTH / 2;
+    if (Math.abs(centerX - flag.x) <= CONFIG.FLAG.RADIUS) {
+      if (p.team === 'blue') { bluePresent = true; bluePlayer = p; }
+      if (p.team === 'red') { redPresent = true; redPlayer = p; }
+    }
+  }
+
+  flag.contested = bluePresent && redPresent;
+  flag.capturingTeam = null;
+
+  if (!flag.contested) {
+    if (bluePresent && !redPresent) {
+      flag.capturingTeam = 'blue';
+      const prevOwner = flag.owner;
+      flag.progress = Math.max(-1, flag.progress - CONFIG.FLAG.CAPTURE_SPEED * dt);
+      if (flag.progress <= -1 && prevOwner !== 'blue') {
+        flag.owner = 'blue';
+        room.match.scores.blue += CONFIG.FLAG_CAPTURE_POINTS;
+        if (bluePlayer) {
+          bluePlayer.captures += 1;
+          bluePlayer.credits += CONFIG.FLAG_CAPTURE_CREDITS;
+          bluePlayer.totalCreditsEarned += CONFIG.FLAG_CAPTURE_CREDITS;
+        }
+        addMatchEvent(room, 'flag_captured', { team: 'blue' });
+      } else if (flag.progress > -0.2 && flag.owner === 'red') {
+        flag.owner = null;
+      }
+    } else if (redPresent && !bluePresent) {
+      flag.capturingTeam = 'red';
+      const prevOwner = flag.owner;
+      flag.progress = Math.min(1, flag.progress + CONFIG.FLAG.CAPTURE_SPEED * dt);
+      if (flag.progress >= 1 && prevOwner !== 'red') {
+        flag.owner = 'red';
+        room.match.scores.red += CONFIG.FLAG_CAPTURE_POINTS;
+        if (redPlayer) {
+          redPlayer.captures += 1;
+          redPlayer.credits += CONFIG.FLAG_CAPTURE_CREDITS;
+          redPlayer.totalCreditsEarned += CONFIG.FLAG_CAPTURE_CREDITS;
+        }
+        addMatchEvent(room, 'flag_captured', { team: 'red' });
+      } else if (flag.progress < 0.2 && flag.owner === 'blue') {
+        flag.owner = null;
+      }
+    }
+  }
+
+  // Начисление очков и кредитов за удержание захваченного флага
+  if (flag.owner) {
+    room.match.scores[flag.owner] += CONFIG.FLAG_HOLD_POINTS_PER_SEC * dt;
+    const holder = room.players.find(p => p.team === flag.owner);
+    if (holder) {
+      holder.credits += CONFIG.FLAG_HOLD_CREDITS_PER_SEC * dt;
+      holder.totalCreditsEarned += CONFIG.FLAG_HOLD_CREDITS_PER_SEC * dt;
+    }
+  }
+}
+
+function finishMatch(room) {
+  room.status = 'finished';
+  const blueScore = Math.floor(room.match.scores.blue);
+  const redScore = Math.floor(room.match.scores.red);
+
+  let winner = 'draw';
+  if (blueScore > redScore) winner = 'blue';
+  else if (redScore > blueScore) winner = 'red';
+
+  room.winner = winner;
+  room.players.forEach(p => { p.ready = false; });
+
+  io.to(room.code).emit('match_finished', {
+    winner,
+    scores: { blue: blueScore, red: redScore },
+    players: room.players.map(p => ({
+      nickname: p.nickname,
+      team: p.team,
+      kills: p.kills,
+      deaths: p.deaths,
+      captures: p.captures,
+      vehiclesDestroyed: p.vehiclesDestroyed,
+      totalCreditsEarned: Math.floor(p.totalCreditsEarned)
+    }))
+  });
+}
+
+// ============================================================================
+// ОБРАБОТКА SOCKET.IO СОБЫТИЙ
+// ============================================================================
+io.on('connection', (socket) => {
+  // Создание новой комнаты
+  socket.on('create_room', ({ nickname }) => {
+    const cleanName = sanitizeNickname(nickname);
+    if (!cleanName) {
+      return socket.emit('error_msg', 'Введите корректный никнейм перед созданием комнаты.');
+    }
+
+    const code = generateRoomCode();
+    const token = generateToken();
+    const player = createPlayerObject(socket.id, token, cleanName, 'blue', true);
+
+    const room = {
+      code,
+      status: 'lobby', // 'lobby' | 'playing' | 'finished'
+      hostToken: token,
+      players: [player],
+      match: null,
+      winner: null
+    };
+
+    rooms.set(code, room);
+    socketToSession.set(socket.id, { code, token });
+    socket.join(code);
+
+    socket.emit('room_joined', {
+      token,
+      lobby: getRoomLobbyPayload(room)
+    });
+  });
+
+  // Присоединение по коду или быстрый вход
+  socket.on('join_room', ({ code, nickname }) => {
+    const cleanName = sanitizeNickname(nickname);
+    if (!cleanName) {
+      return socket.emit('error_msg', 'Введите никнейм перед входом в комнату.');
+    }
+
+    const normalizedCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
+    const room = rooms.get(normalizedCode);
+
+    if (!room) {
+      return socket.emit('error_msg', 'Комната с таким кодом не найдена.');
+    }
+    if (room.players.length >= 2) {
+      return socket.emit('error_msg', 'Комната уже заполнена (максимум 2 игрока).');
+    }
+    if (room.status === 'playing') {
+      return socket.emit('error_msg', 'Матч в этой комнате уже идёт.');
+    }
+
+    const token = generateToken();
+    const takenTeam = room.players[0]?.team;
+    const assignedTeam = takenTeam === 'blue' ? 'red' : 'blue';
+    const player = createPlayerObject(socket.id, token, cleanName, assignedTeam, false);
+
+    room.players.push(player);
+    socketToSession.set(socket.id, { code: room.code, token });
+    socket.join(room.code);
+
+    socket.emit('room_joined', {
+      token,
+      lobby: getRoomLobbyPayload(room)
+    });
+    io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
+  });
+
+  // Быстрый поиск доступного лобби или создание нового
+  socket.on('quick_match', ({ nickname }) => {
+    const cleanName = sanitizeNickname(nickname);
+    if (!cleanName) {
+      return socket.emit('error_msg', 'Введите никнейм перед началом поиска.');
+    }
+
+    let openRoom = null;
+    for (const r of rooms.values()) {
+      if (r.status === 'lobby' && r.players.length === 1 && r.players[0].connected) {
+        openRoom = r;
+        break;
+      }
+    }
+
+    if (openRoom) {
+      const token = generateToken();
+      const assignedTeam = openRoom.players[0].team === 'blue' ? 'red' : 'blue';
+      const player = createPlayerObject(socket.id, token, cleanName, assignedTeam, false);
+      openRoom.players.push(player);
+      socketToSession.set(socket.id, { code: openRoom.code, token });
+      socket.join(openRoom.code);
+
+      socket.emit('room_joined', {
+        token,
+        lobby: getRoomLobbyPayload(openRoom)
+      });
+      io.to(openRoom.code).emit('lobby_update', getRoomLobbyPayload(openRoom));
+    } else {
+      const code = generateRoomCode();
+      const token = generateToken();
+      const player = createPlayerObject(socket.id, token, cleanName, 'blue', true);
+      const room = {
+        code,
+        status: 'lobby',
+        hostToken: token,
+        players: [player],
+        match: null,
+        winner: null
       };
-    })();
+      rooms.set(code, room);
+      socketToSession.set(socket.id, { code, token });
+      socket.join(code);
 
-    // ========================================================================
-    // СОСТОЯНИЕ КЛИЕНТА И ПОДКЛЮЧЕНИЕ SOCKET.IO
-    // ========================================================================
-    const socket = io({
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 800
+      socket.emit('room_joined', {
+        token,
+        lobby: getRoomLobbyPayload(room)
+      });
+    }
+  });
+
+  // Переподключение при временном обрыве связи
+  socket.on('reconnect_session', ({ code, token }) => {
+    const room = rooms.get(code);
+    if (!room) return socket.emit('session_expired');
+
+    const player = room.players.find(p => p.token === token);
+    if (!player) return socket.emit('session_expired');
+
+    if (player.disconnectTimer) {
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = null;
+    }
+
+    player.id = socket.id;
+    player.connected = true;
+    socketToSession.set(socket.id, { code, token });
+    socket.join(code);
+
+    socket.emit('reconnected', {
+      token,
+      lobby: getRoomLobbyPayload(room),
+      config: room.status === 'playing' ? {
+        WORLD_WIDTH: CONFIG.WORLD_WIDTH,
+        WORLD_HEIGHT: CONFIG.WORLD_HEIGHT,
+        GROUND_BASE_Y: CONFIG.GROUND_BASE_Y,
+        FLAG_X: CONFIG.FLAG.X,
+        FLAG_RADIUS: CONFIG.FLAG.RADIUS,
+        SHOP: CONFIG.SHOP,
+        PLATFORMS: MAP_PLATFORMS
+      } : null
     });
 
-    const CLIENT_STATE = {
-      screen: 'menu', // 'menu' | 'lobby' | 'playing' | 'results'
-      token: null,
-      roomCode: null,
-      lobby: null,
-      worldConfig: {
-        WORLD_WIDTH: 7200,
-        WORLD_HEIGHT: 1600,
-        GROUND_BASE_Y: 1280,
-        FLAG_X: 3600,
-        FLAG_RADIUS: 240,
-        SHOP: {},
-        PLATFORMS: []
+    io.to(code).emit('player_connection_status', {
+      nickname: player.nickname,
+      connected: true
+    });
+    io.to(code).emit('lobby_update', getRoomLobbyPayload(room));
+  });
+
+  // Смена команды в лобби
+  socket.on('switch_team', () => {
+    const session = socketToSession.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.code);
+    if (!room || room.status === 'playing') return;
+
+    const player = room.players.find(p => p.token === session.token);
+    if (!player) return;
+
+    const targetTeam = player.team === 'blue' ? 'red' : 'blue';
+    const occupied = room.players.some(p => p.token !== player.token && p.team === targetTeam);
+    if (!occupied) {
+      player.team = targetTeam;
+      player.ready = false;
+      io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
+    } else {
+      socket.emit('error_msg', 'Эта команда уже занята вторым игроком.');
+    }
+  });
+
+  // Переключение статуса готовности
+  socket.on('toggle_ready', () => {
+    const session = socketToSession.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.code);
+    if (!room || room.status === 'playing') return;
+
+    const player = room.players.find(p => p.token === session.token);
+    if (!player || !player.nickname) return;
+
+    player.ready = !player.ready;
+    io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
+  });
+
+  // Запуск матча создателем комнаты
+  socket.on('request_start_match', () => {
+    const session = socketToSession.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.code);
+    if (!room || room.status === 'playing') return;
+
+    if (room.hostToken !== session.token) {
+      return socket.emit('error_msg', 'Только создатель комнаты может начать матч.');
+    }
+    if (room.players.length < 2) {
+      return socket.emit('error_msg', 'Для начала матча нужны оба игрока.');
+    }
+    const allValid = room.players.every(p => p.connected && p.nickname.length > 0 && p.ready);
+    if (!allValid) {
+      return socket.emit('error_msg', 'Оба игрока должны ввести ники и нажать «Готов».');
+    }
+
+    startMatch(room);
+  });
+
+  // Повторный матч после завершения
+  socket.on('play_again', () => {
+    const session = socketToSession.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.code);
+    if (!room || room.status !== 'finished') return;
+
+    room.status = 'lobby';
+    room.match = null;
+    room.players.forEach(p => { p.ready = false; });
+    io.to(room.code).emit('returned_to_lobby', getRoomLobbyPayload(room));
+  });
+
+  // Игровой ввод клиента (движение, прицел, стрельба)
+  socket.on('player_input', (data) => {
+    const session = socketToSession.get(socket.id);
+    if (!session || !data || typeof data !== 'object') return;
+    const room = rooms.get(session.code);
+    if (!room || room.status !== 'playing') return;
+
+    const player = room.players.find(p => p.token === session.token);
+    if (!player) return;
+
+    // Защита от спама пакетами (> 75 пакетов/сек)
+    const now = Date.now();
+    if (now - player.lastRateReset > 1000) {
+      player.lastRateReset = now;
+      player.msgCount = 0;
+    }
+    player.msgCount += 1;
+    if (player.msgCount > 75) return;
+
+    player.input.left = Boolean(data.left);
+    player.input.right = Boolean(data.right);
+    player.input.up = Boolean(data.up);
+    player.input.down = Boolean(data.down);
+    player.input.sprint = Boolean(data.sprint);
+    player.input.fire = Boolean(data.fire);
+
+    if (Number.isFinite(data.aimX) && Number.isFinite(data.aimY)) {
+      player.input.aimX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH, data.aimX));
+      player.input.aimY = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT, data.aimY));
+    }
+  });
+
+  // Посадка / выход из техники (клавиша E)
+  socket.on('interact_vehicle', () => {
+    const session = socketToSession.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.code);
+    if (!room || room.status !== 'playing' || !room.match) return;
+
+    const player = room.players.find(p => p.token === session.token);
+    if (!player || !player.alive) return;
+
+    // Если уже в технике — выходим
+    if (player.vehicleId) {
+      const veh = room.match.vehicles.find(v => v.id === player.vehicleId);
+      if (veh) {
+        veh.driverToken = null;
+        const spec = CONFIG.SHOP[veh.type];
+        player.x = veh.x - CONFIG.SOLDIER.WIDTH / 2;
+        player.y = veh.y - 12;
+        player.vy = -180;
+        if (spec && spec.category === 'air') {
+          // Безопасное десантирование с парашютом / плавным снижением
+          player.vy = 0;
+        }
+      }
+      player.vehicleId = null;
+      return;
+    }
+
+    // Поиск ближайшей свободной техники своей команды (кроме стационарных турелей ПВО)
+    let nearest = null;
+    let bestDist = 135;
+    for (const veh of room.match.vehicles) {
+      if (veh.team !== player.team || veh.driverToken || veh.type === 'aa_turret') continue;
+      const dist = Math.hypot(veh.x - (player.x + 17), veh.y - (player.y + 32));
+      if (dist <= bestDist) {
+        bestDist = dist;
+        nearest = veh;
+      }
+    }
+
+    if (nearest) {
+      nearest.driverToken = player.token;
+      player.vehicleId = nearest.id;
+      player.vx = 0;
+      player.vy = 0;
+    }
+  });
+
+  // Покупка техники или улучшения в магазине
+  socket.on('buy_item', ({ itemId }) => {
+    const session = socketToSession.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.code);
+    if (!room || room.status !== 'playing' || !room.match) return;
+
+    const player = room.players.find(p => p.token === session.token);
+    if (!player) return;
+
+    const spec = CONFIG.SHOP[itemId];
+    if (!spec) return;
+
+    if (player.credits < spec.cost) {
+      return socket.emit('shop_feedback', { ok: false, msg: 'Недостаточно кредитов!' });
+    }
+
+    if (itemId === 'base_shield') {
+      const currentLvl = room.match.baseUpgrades[player.team] || 0;
+      if (currentLvl >= spec.maxLevel) {
+        return socket.emit('shop_feedback', { ok: false, msg: 'Достигнут максимальный уровень!' });
+      }
+      player.credits -= spec.cost;
+      room.match.baseUpgrades[player.team] = currentLvl + 1;
+      player.maxHp = CONFIG.SOLDIER.MAX_HP + (currentLvl + 1) * 15;
+      if (player.alive) player.hp = Math.min(player.maxHp, player.hp + 30);
+
+      addMatchEvent(room, 'upgrade_bought', { team: player.team, level: currentLvl + 1 });
+      return socket.emit('shop_feedback', { ok: true, msg: `Укрепления базы: уровень ${currentLvl + 1}` });
+    }
+
+    // Проверка лимита техники данного типа для команды
+    const existingCount = room.match.vehicles.filter(
+      v => v.team === player.team && v.type === itemId
+    ).length;
+
+    if (existingCount >= spec.limitPerTeam) {
+      return socket.emit('shop_feedback', {
+        ok: false,
+        msg: `Лимит техники «${spec.name}» (${spec.limitPerTeam} шт.) исчерпан!`
+      });
+    }
+
+    player.credits -= spec.cost;
+
+    // Размещение турели ПВО чуть впереди базы, а техники — на посадочной площадке базы
+    let spawnX = null;
+    if (itemId === 'aa_turret') {
+      const offset = existingCount * 160;
+      spawnX = player.team === 'blue' ? 880 + offset : CONFIG.WORLD_WIDTH - 880 - offset;
+    }
+
+    const created = spawnVehicle(room, player.team, itemId, spawnX);
+    if (created) {
+      addMatchEvent(room, 'vehicle_spawned', { team: player.team, type: itemId, x: created.x, y: created.y });
+      socket.emit('shop_feedback', { ok: true, msg: `Доставлено на базу: ${spec.name}` });
+    }
+  });
+
+  // Выход из комнаты вручную
+  socket.on('leave_room', () => {
+    handlePlayerExit(socket.id, true);
+  });
+
+  // Разрыв соединения
+  socket.on('disconnect', () => {
+    handlePlayerExit(socket.id, false);
+  });
+});
+
+function handlePlayerExit(socketId, immediate) {
+  const session = socketToSession.get(socketId);
+  if (!session) return;
+  socketToSession.delete(socketId);
+
+  const room = rooms.get(session.code);
+  if (!room) return;
+
+  const player = room.players.find(p => p.token === session.token);
+  if (!player) return;
+
+  if (immediate || room.status === 'lobby') {
+    room.players = room.players.filter(p => p.token !== session.token);
+    if (room.players.length === 0) {
+      rooms.delete(room.code);
+    } else {
+      if (room.hostToken === session.token) {
+        room.hostToken = room.players[0].token;
+        room.players[0].isHost = true;
+      }
+      io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
+    }
+    return;
+  }
+
+  // В активном матче даём 25 секунд на переподключение
+  player.connected = false;
+  io.to(room.code).emit('player_connection_status', {
+    nickname: player.nickname,
+    connected: false
+  });
+
+  player.disconnectTimer = setTimeout(() => {
+    const currentRoom = rooms.get(session.code);
+    if (!currentRoom) return;
+    currentRoom.players = currentRoom.players.filter(p => p.token !== session.token);
+    if (currentRoom.players.length === 0) {
+      rooms.delete(currentRoom.code);
+    } else if (currentRoom.status === 'playing') {
+      io.to(currentRoom.code).emit('opponent_left', { nickname: player.nickname });
+      finishMatch(currentRoom);
+    }
+  }, 25000);
+}
+
+// ============================================================================
+// ИГРОВОЙ ЦИКЛ (30 ГЦ СИМУЛЯЦИЯ / 20 ГЦ СИНХРОНИЗАЦИЯ)
+// ============================================================================
+let lastTickTime = Date.now();
+setInterval(() => {
+  const now = Date.now();
+  const dt = Math.min(0.05, (now - lastTickTime) / 1000);
+  lastTickTime = now;
+
+  for (const room of rooms.values()) {
+    if (room.status === 'playing') {
+      updateRoomSimulation(room, dt);
+    }
+  }
+}, 1000 / CONFIG.TICK_RATE);
+
+setInterval(() => {
+  for (const room of rooms.values()) {
+    if (room.status !== 'playing' || !room.match) continue;
+
+    const payload = {
+      t: Date.now(),
+      timeLeft: room.match.timeLeft,
+      scores: {
+        blue: Math.floor(room.match.scores.blue),
+        red: Math.floor(room.match.scores.red)
       },
-      latestServerState: null,
-      interpPlayers: new Map(),
-      particles: [],
-      shockwaves: [],
-      camera: { x: 0, y: 0, vx: 0, vy: 0, shake: 0 },
-      shopOpen: false,
-      shopCategory: 'all',
-      scoreboardOpen: false,
-      fullMapOpen: false,
-      settingsReturnScreen: 'menu',
-      showHints: true,
-      lastResults: null
+      flag: room.match.flag,
+      baseUpgrades: room.match.baseUpgrades,
+      players: room.players.map(p => ({
+        token: p.token,
+        nickname: p.nickname,
+        team: p.team,
+        x: Math.round(p.x * 10) / 10,
+        y: Math.round(p.y * 10) / 10,
+        vx: Math.round(p.vx),
+        vy: Math.round(p.vy),
+        facing: p.facing,
+        aimAngle: Math.round(p.aimAngle * 100) / 100,
+        hp: Math.ceil(p.hp),
+        maxHp: p.maxHp,
+        alive: p.alive,
+        respawnTimer: Math.max(0, Math.round(p.respawnTimer * 10) / 10),
+        animState: p.animState,
+        vehicleId: p.vehicleId,
+        hitFlash: p.hitFlash > 0,
+        credits: Math.floor(p.credits),
+        kills: p.kills,
+        deaths: p.deaths,
+        captures: p.captures,
+        vehiclesDestroyed: p.vehiclesDestroyed
+      })),
+      vehicles: room.match.vehicles.map(v => ({
+        id: v.id,
+        type: v.type,
+        team: v.team,
+        x: Math.round(v.x * 10) / 10,
+        y: Math.round(v.y * 10) / 10,
+        vx: Math.round(v.vx),
+        vy: Math.round(v.vy),
+        angle: Math.round(v.angle * 100) / 100,
+        facing: v.facing,
+        hp: Math.ceil(v.hp),
+        maxHp: v.maxHp,
+        driverToken: v.driverToken,
+        targetId: v.targetId,
+        rotorAngle: Math.round(v.rotorAngle * 10) / 10
+      })),
+      projectiles: room.match.projectiles.map(pr => ({
+        id: pr.id,
+        team: pr.team,
+        kind: pr.kind,
+        x: Math.round(pr.x),
+        y: Math.round(pr.y),
+        vx: Math.round(pr.vx),
+        vy: Math.round(pr.vy)
+      })),
+      events: room.match.events
     };
 
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const minimapCanvas = document.getElementById('minimapCanvas');
-    const minimapCtx = minimapCanvas.getContext('2d');
-    const fullMapCanvas = document.getElementById('fullMapCanvas');
-    const fullMapCtx = fullMapCanvas.getContext('2d');
-
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    // Восстановление никнейма из localStorage
-    const savedNick = localStorage.getItem('bw_nickname') || '';
-    document.getElementById('nicknameInput').value = savedNick;
-
-    function showToast(msg) {
-      const el = document.getElementById('toastBanner');
-      el.textContent = msg;
-      el.classList.add('show');
-      clearTimeout(showToast._t);
-      showToast._t = setTimeout(() => el.classList.remove('show'), 2800);
-    }
-
-    function setScreen(name) {
-      CLIENT_STATE.screen = name;
-      document.getElementById('mainMenuScreen').classList.toggle('active', name === 'menu');
-      document.getElementById('lobbyScreen').classList.toggle('active', name === 'lobby');
-      document.getElementById('resultsScreen').classList.toggle('active', name === 'results');
-      document.getElementById('hud').classList.toggle('active', name === 'playing');
-      if (name !== 'playing') {
-        document.getElementById('shopModal').classList.remove('active');
-        document.getElementById('scoreboardOverlay').classList.remove('active');
-        document.getElementById('fullMapOverlay').classList.remove('active');
-        document.getElementById('respawnBanner').classList.remove('active');
-        CLIENT_STATE.shopOpen = false;
-        CLIENT_STATE.scoreboardOpen = false;
-        CLIENT_STATE.fullMapOpen = false;
-      }
-    }
-
-    function getNickname() {
-      const val = document.getElementById('nicknameInput').value.trim();
-      if (!val) {
-        showToast('Сначала введите ваш никнейм!');
-        document.getElementById('nicknameInput').focus();
-        return null;
-      }
-      localStorage.setItem('bw_nickname', val);
-      return val;
-    }
-
-    // ========================================================================
-    // ОБРАБОТЧИКИ МЕНЮ И ЛОББИ
-    // ========================================================================
-    document.getElementById('btnQuickMatch').addEventListener('click', () => {
-      const nickname = getNickname();
-      if (nickname) socket.emit('quick_match', { nickname });
-    });
-
-    document.getElementById('btnCreateRoom').addEventListener('click', () => {
-      const nickname = getNickname();
-      if (nickname) socket.emit('create_room', { nickname });
-    });
-
-    document.getElementById('btnJoinRoom').addEventListener('click', () => {
-      const nickname = getNickname();
-      if (!nickname) return;
-      const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
-      if (!code) {
-        showToast('Введите код комнаты.');
-        return;
-      }
-      socket.emit('join_room', { code, nickname });
-    });
-
-    document.getElementById('btnCopyCode').addEventListener('click', () => {
-      if (CLIENT_STATE.roomCode) {
-        navigator.clipboard?.writeText(CLIENT_STATE.roomCode).catch(() => {});
-        showToast(`Код ${CLIENT_STATE.roomCode} скопирован`);
-      }
-    });
-
-    document.getElementById('btnSwitchTeam').addEventListener('click', () => {
-      socket.emit('switch_team');
-    });
-
-    document.getElementById('btnToggleReady').addEventListener('click', () => {
-      socket.emit('toggle_ready');
-    });
-
-    document.getElementById('btnStartMatch').addEventListener('click', () => {
-      socket.emit('request_start_match');
-    });
-
-    document.getElementById('btnLeaveLobby').addEventListener('click', () => {
-      socket.emit('leave_room');
-      CLIENT_STATE.token = null;
-      CLIENT_STATE.roomCode = null;
-      sessionStorage.removeItem('bw_session');
-      setScreen('menu');
-    });
-
-    // Настройки и Об игре
-    function openSettings(fromScreen) {
-      CLIENT_STATE.settingsReturnScreen = fromScreen;
-      document.getElementById('settingsScreen').classList.add('active');
-    }
-
-    document.getElementById('btnOpenSettings').addEventListener('click', () => openSettings('menu'));
-    document.getElementById('btnGameSettings').addEventListener('click', () => {
-      if (CLIENT_STATE.shopOpen) toggleShop(false);
-      openSettings('playing');
-    });
-
-    document.getElementById('btnCloseSettings').addEventListener('click', () => {
-      document.getElementById('settingsScreen').classList.remove('active');
-    });
-
-    document.getElementById('volumeSlider').addEventListener('input', (e) => {
-      const v = Number(e.target.value);
-      document.getElementById('volumeLabel').textContent = `${v}%`;
-      SoundFX.setVolume(v / 100);
-    });
-
-    function syncMuteButtons() {
-      const muted = SoundFX.isMuted();
-      document.getElementById('btnToggleMute').textContent = muted ? '🔇 Звук выключен' : '🔊 Звук включён';
-      document.getElementById('btnQuickMute').textContent = muted ? '🔇' : '🔊';
-    }
-
-    document.getElementById('btnToggleMute').addEventListener('click', () => {
-      SoundFX.setMuted(!SoundFX.isMuted());
-      syncMuteButtons();
-    });
-
-    document.getElementById('btnQuickMute').addEventListener('click', () => {
-      SoundFX.setMuted(!SoundFX.isMuted());
-      syncMuteButtons();
-    });
-
-    document.getElementById('chkShowHint').addEventListener('change', (e) => {
-      CLIENT_STATE.showHints = e.target.checked;
-      document.getElementById('controlsHint').style.display = CLIENT_STATE.showHints ? 'block' : 'none';
-    });
-
-    document.getElementById('btnOpenAbout').addEventListener('click', () => {
-      document.getElementById('aboutScreen').classList.add('active');
-    });
-    document.getElementById('btnCloseAbout').addEventListener('click', () => {
-      document.getElementById('aboutScreen').classList.remove('active');
-    });
-
-    // Экран результатов
-    document.getElementById('btnPlayAgain').addEventListener('click', () => {
-      socket.emit('play_again');
-    });
-    document.getElementById('btnBackToMenu').addEventListener('click', () => {
-      socket.emit('leave_room');
-      CLIENT_STATE.token = null;
-      CLIENT_STATE.roomCode = null;
-      sessionStorage.removeItem('bw_session');
-      setScreen('menu');
-    });
-
-    function renderLobby(lobby) {
-      CLIENT_STATE.lobby = lobby;
-      CLIENT_STATE.roomCode = lobby.code;
-      document.getElementById('lobbyCodeDisplay').textContent = lobby.code;
-
-      const bluePlayer = lobby.players.find(p => p.team === 'blue');
-      const redPlayer = lobby.players.find(p => p.team === 'red');
-
-      function renderSlot(el, player, teamName) {
-        if (!player) {
-          el.innerHTML = `
-            <div>
-              <div class="team-badge">${teamName}</div>
-              <div class="slot-nick" style="color:var(--text-muted);">Ожидание игрока...</div>
-            </div>
-            <div class="slot-meta">Свободный слот</div>
-          `;
-          return;
-        }
-        el.innerHTML = `
-          <div>
-            <div class="team-badge">${teamName} ${player.isHost ? '• СОЗДАТЕЛЬ' : ''}</div>
-            <div class="slot-nick">${player.nickname}</div>
-            <div class="slot-meta">${player.connected ? '● В сети' : '○ Переподключение...'}</div>
-          </div>
-          <div>
-            <span class="ready-pill ${player.ready ? 'yes' : 'no'}">
-              ${player.ready ? '✔ ГОТОВ К БОЮ' : '⏳ НЕ ГОТОВ'}
-            </span>
-          </div>
-        `;
-      }
-
-      renderSlot(document.getElementById('slotBlue'), bluePlayer, 'СИНЯЯ КОМАНДА');
-      renderSlot(document.getElementById('slotRed'), redPlayer, 'КРАСНАЯ КОМАНДА');
-
-      const me = lobby.players.find(p => p.token === CLIENT_STATE.token);
-      const btnReady = document.getElementById('btnToggleReady');
-      if (me) {
-        btnReady.textContent = me.ready ? '✖ Отменить готовность' : '✔ Готов';
-      }
-
-      const isHost = me && me.isHost;
-      const canStart = Boolean(
-        isHost &&
-        lobby.players.length === 2 &&
-        lobby.players.every(p => p.connected && p.nickname && p.ready)
-      );
-      const btnStart = document.getElementById('btnStartMatch');
-      btnStart.style.display = isHost ? 'inline-flex' : 'none';
-      btnStart.disabled = !canStart;
-    }
-
-    // ========================================================================
-    // СОБЫТИЯ SOCKET.IO ОТ СЕРВЕРА
-    // ========================================================================
-    socket.on('connect', () => {
-      const saved = sessionStorage.getItem('bw_session');
-      if (saved && CLIENT_STATE.screen !== 'menu') {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.code && parsed.token) {
-            socket.emit('reconnect_session', parsed);
-          }
-        } catch (_) {}
-      }
-    });
-
-    socket.on('error_msg', (msg) => {
-      showToast(msg);
-    });
-
-    socket.on('room_joined', ({ token, lobby }) => {
-      CLIENT_STATE.token = token;
-      CLIENT_STATE.roomCode = lobby.code;
-      sessionStorage.setItem('bw_session', JSON.stringify({ code: lobby.code, token }));
-      renderLobby(lobby);
-      setScreen('lobby');
-    });
-
-    socket.on('lobby_update', (lobby) => {
-      renderLobby(lobby);
-      if (CLIENT_STATE.screen !== 'playing') {
-        setScreen('lobby');
-      }
-    });
-
-    socket.on('reconnected', ({ token, lobby, config }) => {
-      CLIENT_STATE.token = token;
-      CLIENT_STATE.roomCode = lobby.code;
-      if (config) {
-        CLIENT_STATE.worldConfig = config;
-        setScreen('playing');
-      } else {
-        renderLobby(lobby);
-        setScreen('lobby');
-      }
-      showToast('Соединение восстановлено');
-    });
-
-    socket.on('session_expired', () => {
-      sessionStorage.removeItem('bw_session');
-      CLIENT_STATE.token = null;
-      setScreen('menu');
-    });
-
-    socket.on('player_connection_status', ({ nickname, connected }) => {
-      document.getElementById('disconnectBanner').classList.toggle('active', !connected);
-      showToast(connected ? `${nickname} вернулся в бой` : `${nickname} потерял связь`);
-    });
-
-    socket.on('opponent_left', ({ nickname }) => {
-      document.getElementById('disconnectBanner').classList.remove('active');
-      showToast(`Противник ${nickname} покинул матч`);
-    });
-
-    socket.on('match_started', ({ config }) => {
-      CLIENT_STATE.worldConfig = config;
-      CLIENT_STATE.interpPlayers.clear();
-      CLIENT_STATE.particles = [];
-      CLIENT_STATE.shockwaves = [];
-      document.getElementById('disconnectBanner').classList.remove('active');
-      setScreen('playing');
-      SoundFX.matchStart();
-      showToast('Бой начался! Захватите центральный флаг!');
-    });
-
-    socket.on('shop_feedback', ({ ok, msg }) => {
-      showToast(msg);
-      if (ok) renderShopItems();
-    });
-
-    socket.on('game_state', (state) => {
-      CLIENT_STATE.latestServerState = state;
-
-      // Обновляем буферы интерполяции для игроков
-      const activeTokens = new Set();
-      for (const p of state.players) {
-        activeTokens.add(p.token);
-        let entry = CLIENT_STATE.interpPlayers.get(p.token);
-        if (!entry) {
-          entry = {
-            renderX: p.x,
-            renderY: p.y,
-            targetX: p.x,
-            targetY: p.y,
-            prevAnim: p.animState
-          };
-          CLIENT_STATE.interpPlayers.set(p.token, entry);
-        } else {
-          entry.targetX = p.x;
-          entry.targetY = p.y;
-          if (p.alive && p.animState !== entry.prevAnim && (p.animState === 'walk' || p.animState === 'run')) {
-            if (p.token === CLIENT_STATE.token) SoundFX.step();
-          }
-          entry.prevAnim = p.animState;
-        }
-      }
-      for (const key of CLIENT_STATE.interpPlayers.keys()) {
-        if (!activeTokens.has(key)) CLIENT_STATE.interpPlayers.delete(key);
-      }
-
-      // Обработка визуальных и звуковых событий матча
-      if (Array.isArray(state.events)) {
-        for (const ev of state.events) {
-          if (ev.type === 'jump') {
-            spawnParticles(ev.x, ev.y, '#d8e6ff', 8, 120);
-            if (CLIENT_STATE.latestServerState) {
-              const me = state.players.find(pl => pl.token === CLIENT_STATE.token);
-              if (me && Math.hypot(me.x - ev.x, me.y - ev.y) < 120) SoundFX.jump();
-            }
-          } else if (ev.type === 'hit') {
-            const color = ev.kind === 'aa_missile' ? '#ff9d2e' : (ev.team === 'blue' ? '#66c2ff' : '#ff758f');
-            spawnParticles(ev.x, ev.y, color, 9, 210);
-            SoundFX.hit(ev.kind === 'shell' || ev.kind === 'aa_missile');
-          } else if (ev.type === 'explosion') {
-            const isLarge = ev.size === 'large';
-            spawnParticles(ev.x, ev.y, '#ff9f1c', isLarge ? 34 : 22, isLarge ? 360 : 250);
-            spawnParticles(ev.x, ev.y, '#5a6475', isLarge ? 16 : 10, 140);
-            CLIENT_STATE.shockwaves.push({ x: ev.x, y: ev.y, r: 10, maxR: isLarge ? 150 : 95, alpha: 0.9 });
-            CLIENT_STATE.camera.shake = Math.max(CLIENT_STATE.camera.shake, isLarge ? 16 : 10);
-            SoundFX.hit(true);
-          } else if (ev.type === 'flag_captured') {
-            SoundFX.flagCapture();
-            showToast(ev.team === 'blue' ? 'Синяя команда захватила флаг!' : 'Красная команда захватила флаг!');
-          } else if (ev.type === 'respawn') {
-            spawnParticles(ev.x, ev.y, ev.team === 'blue' ? '#4da6ff' : '#ff5c77', 16, 170);
-          }
-        }
-      }
-
-      updateHudDom(state);
-    });
-
-    socket.on('match_finished', (results) => {
-      CLIENT_STATE.lastResults = results;
-      const me = results.players.find(p => p.nickname === getNickname());
-      const won = me && results.winner === me.team;
-      SoundFX.matchEnd(won);
-
-      const titleEl = document.getElementById('resultsTitle');
-      if (results.winner === 'blue') {
-        titleEl.textContent = 'ПОБЕДА СИНЕЙ КОМАНДЫ!';
-        titleEl.style.color = '#64b5ff';
-      } else if (results.winner === 'red') {
-        titleEl.textContent = 'ПОБЕДА КРАСНОЙ КОМАНДЫ!';
-        titleEl.style.color = '#ff7088';
-      } else {
-        titleEl.textContent = 'НИЧЬЯ!';
-        titleEl.style.color = '#f5b82e';
-      }
-
-      document.getElementById('resultsScores').textContent =
-        `Синие: ${results.scores.blue} — Красные: ${results.scores.red}`;
-
-      const tbody = document.getElementById('resultsTableBody');
-      tbody.innerHTML = results.players.map(p => `
-        <tr>
-          <td><strong>${p.nickname}</strong></td>
-          <td style="color:${p.team === 'blue' ? '#64b5ff' : '#ff7088'}; font-weight:700;">
-            ${p.team === 'blue' ? 'Синие' : 'Красные'}
-          </td>
-          <td>${p.kills}</td>
-          <td>${p.captures}</td>
-          <td>${p.vehiclesDestroyed}</td>
-          <td style="color:var(--accent); font-weight:700;">${p.totalCreditsEarned} CR</td>
-        </tr>
-      `).join('');
-
-      setScreen('results');
-    });
-
-    socket.on('returned_to_lobby', (lobby) => {
-      renderLobby(lobby);
-      setScreen('lobby');
-    });
-
-    // ========================================================================
-    // УПРАВЛЕНИЕ КЛАВИАТУРОЙ И МЫШЬЮ
-    // ========================================================================
-    const keysDown = new Set();
-    let mouseDown = false;
-    let mouseScreenX = canvas.width / 2;
-    let mouseScreenY = canvas.height / 2;
-
-    function toggleShop(forceState = null) {
-      if (CLIENT_STATE.screen !== 'playing') return;
-      const next = forceState !== null ? forceState : !CLIENT_STATE.shopOpen;
-      CLIENT_STATE.shopOpen = next;
-      document.getElementById('shopModal').classList.toggle('active', next);
-      if (next) renderShopItems();
-    }
-
-    window.addEventListener('keydown', (e) => {
-      if (CLIENT_STATE.screen !== 'playing') return;
-
-      if (e.code === 'KeyB') {
-        e.preventDefault();
-        toggleShop();
-        return;
-      }
-      if (e.code === 'Tab') {
-        e.preventDefault();
-        CLIENT_STATE.scoreboardOpen = true;
-        document.getElementById('scoreboardOverlay').classList.add('active');
-        return;
-      }
-      if (e.code === 'KeyM') {
-        e.preventDefault();
-        CLIENT_STATE.fullMapOpen = !CLIENT_STATE.fullMapOpen;
-        document.getElementById('fullMapOverlay').classList.toggle('active', CLIENT_STATE.fullMapOpen);
-        return;
-      }
-      if (e.code === 'Escape') {
-        e.preventDefault();
-        if (CLIENT_STATE.shopOpen) {
-          toggleShop(false);
-        } else if (CLIENT_STATE.fullMapOpen) {
-          CLIENT_STATE.fullMapOpen = false;
-          document.getElementById('fullMapOverlay').classList.remove('active');
-        } else {
-          openSettings('playing');
-        }
-        return;
-      }
-      if (e.code === 'KeyE' && !CLIENT_STATE.shopOpen) {
-        socket.emit('interact_vehicle');
-        return;
-      }
-
-      keysDown.add(e.code);
-    });
-
-    window.addEventListener('keyup', (e) => {
-      keysDown.delete(e.code);
-      if (e.code === 'Tab') {
-        CLIENT_STATE.scoreboardOpen = false;
-        document.getElementById('scoreboardOverlay').classList.remove('active');
-      }
-    });
-
-    window.addEventListener('blur', () => {
-      keysDown.clear();
-      mouseDown = false;
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-      mouseScreenX = e.clientX;
-      mouseScreenY = e.clientY;
-    });
-
-    canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0 && CLIENT_STATE.screen === 'playing' && !CLIENT_STATE.shopOpen) {
-        mouseDown = true;
-      }
-    });
-
-    window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) mouseDown = false;
-    });
-
-    // Отправка ввода на сервер 25 раз в секунду
-    setInterval(() => {
-      if (CLIENT_STATE.screen !== 'playing' || !CLIENT_STATE.latestServerState) return;
-      const worldAimX = mouseScreenX + CLIENT_STATE.camera.x;
-      const worldAimY = mouseScreenY + CLIENT_STATE.camera.y;
-
-      socket.emit('player_input', {
-        left: keysDown.has('KeyA') || keysDown.has('ArrowLeft'),
-        right: keysDown.has('KeyD') || keysDown.has('ArrowRight'),
-        up: keysDown.has('KeyW') || keysDown.has('Space') || keysDown.has('ArrowUp'),
-        down: keysDown.has('KeyS') || keysDown.has('ArrowDown'),
-        sprint: keysDown.has('ShiftLeft') || keysDown.has('ShiftRight'),
-        fire: mouseDown && !CLIENT_STATE.shopOpen,
-        aimX: worldAimX,
-        aimY: worldAimY
-      });
-    }, 40);
-
-    // ========================================================================
-    // МАГАЗИН И HUD
-    // ========================================================================
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        CLIENT_STATE.shopCategory = btn.dataset.cat;
-        renderShopItems();
-      });
-    });
-
-    document.getElementById('btnOpenShop').addEventListener('click', () => toggleShop(true));
-    document.getElementById('btnCloseShop').addEventListener('click', () => toggleShop(false));
-    document.getElementById('btnCloseFullMap').addEventListener('click', () => {
-      CLIENT_STATE.fullMapOpen = false;
-      document.getElementById('fullMapOverlay').classList.remove('active');
-    });
-
-    const ITEM_DESCRIPTIONS = {
-      buggy: 'Быстрая разведмашина со скорострельным бластером. Отлично подходит для рейдов к центру.',
-      apc: 'Защищённый бронетранспортёр с тяжёлым импульсным орудием и прочной бронёй.',
-      tank: 'Мощный тяжёлый танк со снарядами фугасного действия по площади.',
-      helicopter: 'Маневренный ударный вертолёт с вертикальным взлётом и воздушной пушкой.',
-      plane: 'Беспилотный самолёт с крыльями и хвостовым оперением для скоростных ударов.',
-      aa_turret: 'Автоматическая турель ПВО. Атакует ТОЛЬКО вражескую авиацию.',
-      base_shield: 'Усиливает броню укреплений на базе, ускоряет лечение и повышает макс. HP.'
-    };
-
-    function renderShopItems() {
-      const shop = CLIENT_STATE.worldConfig.SHOP || {};
-      const state = CLIENT_STATE.latestServerState;
-      const me = state ? state.players.find(p => p.token === CLIENT_STATE.token) : null;
-      const myCredits = me ? me.credits : 0;
-      document.getElementById('shopCreditsVal').textContent = `${myCredits} CR`;
-
-      const grid = document.getElementById('shopItemsGrid');
-      const entries = Object.values(shop).filter(item =>
-        CLIENT_STATE.shopCategory === 'all' || item.category === CLIENT_STATE.shopCategory
-      );
-
-      grid.innerHTML = entries.map(item => {
-        const canAfford = myCredits >= item.cost;
-        let statLine = '';
-        if (item.maxHp) statLine = `HP: ${item.maxHp} • Лимит: ${item.limitPerTeam}/ком.`;
-        else if (item.maxLevel) {
-          const curLvl = (state && me && state.baseUpgrades) ? (state.baseUpgrades[me.team] || 0) : 0;
-          statLine = `Уровень: ${curLvl} / ${item.maxLevel}`;
-        }
-
-        return `
-          <div class="shop-item">
-            <div>
-              <div class="shop-item-title">${item.name}</div>
-              <div class="shop-item-desc">${ITEM_DESCRIPTIONS[item.id] || ''}</div>
-            </div>
-            <div class="shop-item-stats">${statLine}</div>
-            <div class="shop-item-footer">
-              <span class="price-tag">${item.cost} CR</span>
-              <button class="btn btn-success" style="padding:7px 12px; font-size:0.82rem;"
-                ${canAfford ? '' : 'disabled'} data-buy="${item.id}">Купить</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      grid.querySelectorAll('[data-buy]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          socket.emit('buy_item', { itemId: btn.dataset.buy });
-        });
-      });
-    }
-
-    function updateHudDom(state) {
-      document.getElementById('hudBlueScore').textContent = state.scores.blue;
-      document.getElementById('hudRedScore').textContent = state.scores.red;
-
-      const totalSec = Math.max(0, Math.ceil(state.timeLeft));
-      const mins = String(Math.floor(totalSec / 60)).padStart(2, '0');
-      const secs = String(totalSec % 60).padStart(2, '0');
-      document.getElementById('hudTimer').textContent = `${mins}:${secs}`;
-
-      // Флаг
-      const flag = state.flag;
-      const flagText = document.getElementById('flagStatusText');
-      const meterFill = document.getElementById('flagMeterFill');
-      if (flag.contested) {
-        flagText.textContent = 'ЦЕНТРАЛЬНЫЙ ФЛАГ: ОСПАРИВАЕТСЯ!';
-        flagText.style.color = '#f5b82e';
-      } else if (flag.owner === 'blue') {
-        flagText.textContent = 'ЦЕНТРАЛЬНЫЙ ФЛАГ: ПОД КОНТРОЛЕМ СИНИХ';
-        flagText.style.color = '#64b5ff';
-      } else if (flag.owner === 'red') {
-        flagText.textContent = 'ЦЕНТРАЛЬНЫЙ ФЛАГ: ПОД КОНТРОЛЕМ КРАСНЫХ';
-        flagText.style.color = '#ff7088';
-      } else {
-        flagText.textContent = 'ЦЕНТРАЛЬНЫЙ ФЛАГ: НЕЙТРАЛЕН';
-        flagText.style.color = '#a8bbd9';
-      }
-
-      if (flag.progress < 0) {
-        const pct = Math.min(50, Math.abs(flag.progress) * 50);
-        meterFill.style.left = `${50 - pct}%`;
-        meterFill.style.width = `${pct}%`;
-        meterFill.style.background = '#2b8cff';
-      } else if (flag.progress > 0) {
-        const pct = Math.min(50, flag.progress * 50);
-        meterFill.style.left = '50%';
-        meterFill.style.width = `${pct}%`;
-        meterFill.style.background = '#ff3b5c';
-      } else {
-        meterFill.style.left = '50%';
-        meterFill.style.width = '0%';
-      }
-
-      const me = state.players.find(p => p.token === CLIENT_STATE.token);
-      if (me) {
-        document.getElementById('hudPlayerName').textContent = `${me.nickname} (${me.team === 'blue' ? 'Синие' : 'Красные'})`;
-        document.getElementById('hudHpText').textContent = `${me.hp} / ${me.maxHp} HP`;
-        const hpPct = Math.max(0, Math.min(100, (me.hp / me.maxHp) * 100));
-        document.getElementById('hudHpFill').style.width = `${hpPct}%`;
-        document.getElementById('hudCredits').textContent = `${me.credits} CR`;
-
-        const respawnBanner = document.getElementById('respawnBanner');
-        if (!me.alive) {
-          respawnBanner.classList.add('active');
-          document.getElementById('respawnCountdown').textContent = me.respawnTimer.toFixed(1);
-        } else {
-          respawnBanner.classList.remove('active');
-        }
-
-        const vehInfo = document.getElementById('hudVehicleInfo');
-        if (me.vehicleId) {
-          const v = state.vehicles.find(item => item.id === me.vehicleId);
-          const spec = v ? CLIENT_STATE.worldConfig.SHOP[v.type] : null;
-          vehInfo.textContent = `В технике: ${spec ? spec.name : 'Машина'} [E — выйти]`;
-          SoundFX.engineTick(spec && spec.category === 'air');
-        } else {
-          const nearby = state.vehicles.find(v =>
-            v.team === me.team && !v.driverToken && v.type !== 'aa_turret' &&
-            Math.hypot(v.x - (me.x + 17), v.y - (me.y + 32)) <= 135
-          );
-          if (nearby) {
-            const spec = CLIENT_STATE.worldConfig.SHOP[nearby.type];
-            vehInfo.textContent = `Нажмите [E], чтобы сесть в: ${spec ? spec.name : 'технику'}`;
-          } else {
-            vehInfo.textContent = 'Пеший солдат';
-          }
-        }
-      }
-
-      if (CLIENT_STATE.scoreboardOpen) {
-        document.getElementById('scoreboardBody').innerHTML = state.players.map(p => `
-          <tr>
-            <td><strong>${p.nickname}</strong></td>
-            <td style="color:${p.team === 'blue' ? '#64b5ff' : '#ff7088'}; font-weight:700;">
-              ${p.team === 'blue' ? 'Синие' : 'Красные'}
-            </td>
-            <td>${p.kills}</td>
-            <td>${p.captures}</td>
-            <td>${p.vehiclesDestroyed}</td>
-            <td style="color:var(--accent); font-weight:700;">${p.credits} CR</td>
-          </tr>
-        `).join('');
-      }
-    }
-
-    // ========================================================================
-    // ГЕОМЕТРИЯ РЕЛЬЕФА И ЧАСТИЦЫ
-    // ========================================================================
-    function getTerrainHeightAt(x) {
-      const W = CLIENT_STATE.worldConfig.WORLD_WIDTH || 7200;
-      const baseY = CLIENT_STATE.worldConfig.GROUND_BASE_Y || 1280;
-      const clampedX = Math.max(0, Math.min(W, x));
-      if (clampedX < 950 || clampedX > W - 950) return baseY;
-      if (clampedX > 3250 && clampedX < 3950) return baseY - 35;
-      const norm = (clampedX - 950) / (W - 1900);
-      const envelope = Math.sin(norm * Math.PI);
-      const hill1 = Math.sin((clampedX - 950) * 0.0024) * 95;
-      const hill2 = Math.cos((clampedX - 950) * 0.0055) * 32;
-      return Math.round(baseY - (hill1 + hill2) * envelope);
-    }
-
-    function spawnParticles(x, y, color, count, speed) {
-      if (CLIENT_STATE.particles.length > 260) {
-        CLIENT_STATE.particles.splice(0, count);
-      }
-      for (let i = 0; i < count; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const spd = (0.25 + Math.random() * 0.75) * speed;
-        CLIENT_STATE.particles.push({
-          x, y,
-          vx: Math.cos(ang) * spd,
-          vy: Math.sin(ang) * spd - 60,
-          life: 0.35 + Math.random() * 0.45,
-          maxLife: 0.8,
-          size: 3 + Math.random() * 5,
-          color
-        });
-      }
-    }
-
-    function updateEffects(dt) {
-      for (let i = CLIENT_STATE.particles.length - 1; i >= 0; i--) {
-        const pt = CLIENT_STATE.particles[i];
-        pt.life -= dt;
-        if (pt.life <= 0) {
-          CLIENT_STATE.particles.splice(i, 1);
-          continue;
-        }
-        pt.vy += 480 * dt;
-        pt.x += pt.vx * dt;
-        pt.y += pt.vy * dt;
-      }
-
-      for (let i = CLIENT_STATE.shockwaves.length - 1; i >= 0; i--) {
-        const sw = CLIENT_STATE.shockwaves[i];
-        sw.r += 340 * dt;
-        sw.alpha -= 2.1 * dt;
-        if (sw.alpha <= 0) CLIENT_STATE.shockwaves.splice(i, 1);
-      }
-    }
-
-    // ========================================================================
-    // ДЕТАЛИЗИРОВАННАЯ ОТРИСОВКА МИРА, СОЛДАТА И ТЕХНИКИ
-    // ========================================================================
-    function drawWorldAndEntities(dt, nowSec) {
-      const W = CLIENT_STATE.worldConfig.WORLD_WIDTH || 7200;
-      const H = CLIENT_STATE.worldConfig.WORLD_HEIGHT || 1600;
-      const state = CLIENT_STATE.latestServerState;
-
-      // Плавная камера с инерцией
-      const cam = CLIENT_STATE.camera;
-      if (state && CLIENT_STATE.screen === 'playing') {
-        const me = state.players.find(p => p.token === CLIENT_STATE.token);
-        if (me) {
-          const interp = CLIENT_STATE.interpPlayers.get(me.token);
-          const px = interp ? interp.renderX : me.x;
-          const py = interp ? interp.renderY : me.y;
-          const targetX = Math.max(0, Math.min(W - canvas.width, px + 17 - canvas.width * 0.45));
-          const targetY = Math.max(0, Math.min(H - canvas.height, py + 32 - canvas.height * 0.62));
-          cam.x += (targetX - cam.x) * Math.min(1, 8.5 * dt);
-          cam.y += (targetY - cam.y) * Math.min(1, 8.5 * dt);
-        }
-      }
-
-      let shakeX = 0;
-      let shakeY = 0;
-      if (cam.shake > 0) {
-        shakeX = (Math.random() - 0.5) * cam.shake;
-        shakeY = (Math.random() - 0.5) * cam.shake;
-        cam.shake = Math.max(0, cam.shake - 38 * dt);
-      }
-
-      const viewX = cam.x + shakeX;
-      const viewY = cam.y + shakeY;
-
-      // 1. Небо и градиент атмосферы
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      skyGrad.addColorStop(0, '#0d1b33');
-      skyGrad.addColorStop(0.55, '#1d3b66');
-      skyGrad.addColorStop(1, '#39689c');
-      ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Облака (параллакс 0.15)
-      ctx.fillStyle = 'rgba(226, 240, 255, 0.16)';
-      for (let i = 0; i < 14; i++) {
-        const cx = ((i * 580 - viewX * 0.15 + nowSec * 14) % (canvas.width + 400)) - 200;
-        const cy = 90 + (i % 4) * 75 - viewY * 0.08;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, 110 + (i % 3) * 35, 28 + (i % 2) * 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Дальний горный хребет (параллакс 0.3)
-      ctx.fillStyle = '#162947';
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height);
-      for (let sx = 0; sx <= canvas.width + 60; sx += 60) {
-        const wx = sx + viewX * 0.3;
-        const ridgeY = 760 + Math.sin(wx * 0.0018) * 120 + Math.cos(wx * 0.0042) * 45 - viewY * 0.3;
-        ctx.lineTo(sx, ridgeY);
-      }
-      ctx.lineTo(canvas.width, canvas.height);
-      ctx.closePath();
-      ctx.fill();
-
-      // Средний план — холмы и деревья (параллакс 0.65)
-      ctx.fillStyle = '#193b4d';
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height);
-      for (let sx = 0; sx <= canvas.width + 40; sx += 40) {
-        const wx = sx + viewX * 0.65;
-        const midY = 980 + Math.sin(wx * 0.0032 + 1.2) * 75 - viewY * 0.65;
-        ctx.lineTo(sx, midY);
-      }
-      ctx.lineTo(canvas.width, canvas.height);
-      ctx.closePath();
-      ctx.fill();
-
-      // Переход в мировые координаты
-      ctx.save();
-      ctx.translate(-viewX, -viewY);
-
-      // Базы (Синяя слева, Красная справа)
-      drawBase(0, 'blue', state ? (state.baseUpgrades?.blue || 0) : 0, nowSec);
-      drawBase(W - 950, 'red', state ? (state.baseUpgrades?.red || 0) : 0, nowSec);
-
-      // Центральная зона захвата и флаг
-      drawFlagZone(state ? state.flag : { x: W / 2, y: getTerrainHeightAt(W / 2), progress: 0, owner: null, contested: false }, nowSec);
-
-      // Платформы и мосты
-      for (const plat of (CLIENT_STATE.worldConfig.PLATFORMS || [])) {
-        ctx.fillStyle = '#2d3b52';
-        ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
-        ctx.fillStyle = '#4c6182';
-        ctx.fillRect(plat.x, plat.y, plat.w, 5);
-        // Опоры моста
-        ctx.fillStyle = '#1e2838';
-        ctx.fillRect(plat.x + 18, plat.y + plat.h, 12, getTerrainHeightAt(plat.x + 24) - (plat.y + plat.h));
-        ctx.fillRect(plat.x + plat.w - 30, plat.y + plat.h, 12, getTerrainHeightAt(plat.x + plat.w - 24) - (plat.y + plat.h));
-      }
-
-      // Рельеф земли, трава, дорога и детали окружения
-      drawTerrainAndProps(viewX, viewX + canvas.width, H);
-
-      // Техника, авиация и ПВО
-      if (state && Array.isArray(state.vehicles)) {
-        for (const veh of state.vehicles) {
-          drawVehicle(veh, nowSec);
-        }
-      }
-
-      // Солдаты
-      if (state && Array.isArray(state.players)) {
-        for (const p of state.players) {
-          if (!p.alive || p.vehicleId) continue;
-          const interp = CLIENT_STATE.interpPlayers.get(p.token);
-          if (interp) {
-            interp.renderX += (interp.targetX - interp.renderX) * Math.min(1, 18 * dt);
-            interp.renderY += (interp.targetY - interp.renderY) * Math.min(1, 18 * dt);
-          }
-          const rx = interp ? interp.renderX : p.x;
-          const ry = interp ? interp.renderY : p.y;
-          drawSoldier(p, rx, ry, nowSec);
-        }
-      }
-
-      // Снаряды
-      if (state && Array.isArray(state.projectiles)) {
-        for (const pr of state.projectiles) {
-          drawProjectile(pr);
-        }
-      }
-
-      // Ударные волны и частицы
-      for (const sw of CLIENT_STATE.shockwaves) {
-        ctx.strokeStyle = `rgba(255, 195, 70, ${Math.max(0, sw.alpha)})`;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      for (const pt of CLIENT_STATE.particles) {
-        const alpha = Math.max(0, pt.life / pt.maxLife);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = pt.color;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-
-      // Прицел на сцене
-      if (CLIENT_STATE.screen === 'playing' && !CLIENT_STATE.shopOpen) {
-        const ax = mouseScreenX + viewX;
-        const ay = mouseScreenY + viewY;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(ax, ay, 11, 0, Math.PI * 2);
-        ctx.moveTo(ax - 16, ay); ctx.lineTo(ax - 6, ay);
-        ctx.moveTo(ax + 6, ay); ctx.lineTo(ax + 16, ay);
-        ctx.moveTo(ax, ay - 16); ctx.lineTo(ax, ay - 6);
-        ctx.moveTo(ax, ay + 6); ctx.lineTo(ax, ay + 16);
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-
-    function drawBase(x, team, upgradeLevel, nowSec) {
-      const groundY = getTerrainHeightAt(x + 475);
-      const isBlue = team === 'blue';
-      const primary = isBlue ? '#2b8cff' : '#ff3b5c';
-      const dark = isBlue ? '#154682' : '#85182b';
-
-      // Командный бункер
-      const bunkerX = isBlue ? x + 130 : x + 640;
-      ctx.fillStyle = '#253247';
-      ctx.fillRect(bunkerX, groundY - 125, 180, 125);
-      ctx.fillStyle = dark;
-      ctx.fillRect(bunkerX - 10, groundY - 138, 200, 18);
-      ctx.fillStyle = primary;
-      ctx.fillRect(bunkerX + 20, groundY - 105, 140, 12);
-
-      // Командная вышка с маяком
-      const towerX = isBlue ? x + 360 : x + 530;
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(towerX, groundY - 230, 34, 230);
-      ctx.fillStyle = primary;
-      ctx.fillRect(towerX - 14, groundY - 245, 62, 22);
-
-      const pulse = 0.55 + 0.45 * Math.sin(nowSec * 5);
-      ctx.fillStyle = isBlue ? `rgba(90, 185, 255, ${pulse})` : `rgba(255, 95, 125, ${pulse})`;
-      ctx.beginPath();
-      ctx.arc(towerX + 17, groundY - 258, 9, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Энергетический купол при покупке улучшения защиты базы
-      if (upgradeLevel > 0) {
-        ctx.save();
-        ctx.strokeStyle = isBlue ? `rgba(77, 166, 255, ${0.25 + upgradeLevel * 0.14})` : `rgba(255, 92, 119, ${0.25 + upgradeLevel * 0.14})`;
-        ctx.fillStyle = isBlue ? 'rgba(43, 140, 255, 0.06)' : 'rgba(255, 59, 92, 0.06)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(isBlue ? x + 340 : x + 610, groundY, 420, Math.PI, 0);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
-    function drawFlagZone(flag, nowSec) {
-      const fx = flag.x;
-      const fy = flag.y;
-      const radius = CLIENT_STATE.worldConfig.FLAG_RADIUS || 240;
-
-      // Зона захвата на земле
-      let zoneColor = 'rgba(245, 184, 46, 0.12)';
-      let borderColor = 'rgba(245, 184, 46, 0.55)';
-      if (flag.owner === 'blue') {
-        zoneColor = 'rgba(43, 140, 255, 0.16)';
-        borderColor = 'rgba(43, 140, 255, 0.75)';
-      } else if (flag.owner === 'red') {
-        zoneColor = 'rgba(255, 59, 92, 0.16)';
-        borderColor = 'rgba(255, 59, 92, 0.75)';
-      }
-
-      ctx.fillStyle = zoneColor;
-      ctx.fillRect(fx - radius, fy - 18, radius * 2, 18);
-      ctx.strokeStyle = borderColor;
-      ctx.setLineDash([10, 8]);
-      ctx.strokeRect(fx - radius, fy - 160, radius * 2, 160);
-      ctx.setLineDash([]);
-
-      // Постамент и мачта флага
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(fx - 28, fy - 14, 56, 14);
-      ctx.fillStyle = '#cbd5e1';
-      ctx.fillRect(fx - 4, fy - 170, 8, 156);
-
-      // Положение полотна по прогрессу захвата (-1 .. +1)
-      const clothY = fy - 162 + (1 - Math.abs(flag.progress)) * 45;
-      const clothColor = flag.progress < -0.15 ? '#2b8cff' : (flag.progress > 0.15 ? '#ff3b5c' : '#f5b82e');
-
-      ctx.fillStyle = clothColor;
-      ctx.beginPath();
-      ctx.moveTo(fx + 4, clothY);
-      for (let i = 1; i <= 8; i++) {
-        const waveX = fx + 4 + i * 11;
-        const waveY = clothY + Math.sin(nowSec * 8 - i * 0.7) * (3 + i * 0.6);
-        ctx.lineTo(waveX, waveY);
-      }
-      for (let i = 8; i >= 1; i--) {
-        const waveX = fx + 4 + i * 11;
-        const waveY = clothY + 46 + Math.cos(nowSec * 8 - i * 0.7) * (3 + i * 0.5);
-        ctx.lineTo(waveX, waveY);
-      }
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    function drawTerrainAndProps(startX, endX, worldH) {
-      const minX = Math.max(0, Math.floor(startX / 24) * 24 - 24);
-      const maxX = Math.min(CLIENT_STATE.worldConfig.WORLD_WIDTH, Math.ceil(endX / 24) * 24 + 24);
-
-      // Тело земли
-      const groundGrad = ctx.createLinearGradient(0, 1220, 0, worldH);
-      groundGrad.addColorStop(0, '#2c4c3b');
-      groundGrad.addColorStop(0.15, '#3b2d23');
-      groundGrad.addColorStop(1, '#18120e');
-
-      ctx.fillStyle = groundGrad;
-      ctx.beginPath();
-      ctx.moveTo(minX, worldH);
-      for (let x = minX; x <= maxX; x += 24) {
-        ctx.lineTo(x, getTerrainHeightAt(x));
-      }
-      ctx.lineTo(maxX, worldH);
-      ctx.closePath();
-      ctx.fill();
-
-      // Дорожное полотно между базами
-      ctx.strokeStyle = '#384152';
-      ctx.lineWidth = 8;
-      ctx.beginPath();
-      for (let x = 850; x <= CLIENT_STATE.worldConfig.WORLD_WIDTH - 850; x += 36) {
-        const y = getTerrainHeightAt(x) - 3;
-        if (x === 850) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Деревья и камни
-      for (let x = 1150; x < CLIENT_STATE.worldConfig.WORLD_WIDTH - 1150; x += 290) {
-        if (x < minX - 80 || x > maxX + 80) continue;
-        const gy = getTerrainHeightAt(x);
-        if (x % 580 === 0) {
-          // Стилизованное дерево
-          ctx.fillStyle = '#4a321f';
-          ctx.fillRect(x - 6, gy - 58, 12, 58);
-          ctx.fillStyle = '#246643';
-          ctx.beginPath();
-          ctx.arc(x, gy - 74, 34, 0, Math.PI * 2);
-          ctx.arc(x - 20, gy - 60, 24, 0, Math.PI * 2);
-          ctx.arc(x + 20, gy - 60, 24, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          // Камень
-          ctx.fillStyle = '#566378';
-          ctx.beginPath();
-          ctx.ellipse(x, gy - 8, 22, 11, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-
-    function drawSoldier(p, x, y, nowSec) {
-      const cx = x + 17;
-      const isBlue = p.team === 'blue';
-      const armor = p.hitFlash ? '#ffffff' : (isBlue ? '#3492ff' : '#ff4766');
-      const visor = isBlue ? '#b8f2ff' : '#ffd1d9';
-
-      ctx.save();
-      ctx.translate(cx, y + 32);
-
-      // Анимация ног
-      const stride = (p.animState === 'run' || p.animState === 'walk')
-        ? Math.sin(nowSec * (p.animState === 'run' ? 18 : 11)) * 12
-        : 0;
-
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 7;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(-4, 12); ctx.lineTo(-4 + stride, 30);
-      ctx.moveTo(4, 12); ctx.lineTo(4 - stride, 30);
-      ctx.stroke();
-
-      // Торс и бронежилет
-      ctx.fillStyle = armor;
-      ctx.beginPath();
-      ctx.roundRect(-12, -10, 24, 24, 6);
-      ctx.fill();
-
-      // Шлем и козырёк
-      ctx.fillStyle = armor;
-      ctx.beginPath();
-      ctx.arc(0, -20, 12, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = visor;
-      ctx.fillRect(p.facing === 1 ? 1 : -10, -23, 9, 6);
-
-      // Энергетический бластер в направлении прицела
-      ctx.save();
-      ctx.translate(0, -4);
-      ctx.rotate(p.aimAngle);
-      ctx.fillStyle = '#e2e8f0';
-      ctx.fillRect(4, -4, 24, 8);
-      ctx.fillStyle = isBlue ? '#38bdf8' : '#fb7185';
-      ctx.fillRect(14, -2, 12, 4);
-      ctx.restore();
-
-      ctx.restore();
-
-      // Имя и полоска здоровья над солдатом
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = isBlue ? '#7cc4ff' : '#ff8ca0';
-      ctx.fillText(p.nickname, cx, y - 18);
-
-      const barW = 44;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(cx - barW / 2, y - 12, barW, 6);
-      ctx.fillStyle = isBlue ? '#38bdf8' : '#fb7185';
-      ctx.fillRect(cx - barW / 2, y - 12, barW * Math.max(0, p.hp / p.maxHp), 6);
-    }
-
-    function drawVehicle(veh, nowSec) {
-      const isBlue = veh.team === 'blue';
-      const hullColor = isBlue ? '#2575d6' : '#d92b4b';
-      const trimColor = isBlue ? '#7cc4ff' : '#ff94a8';
-
-      ctx.save();
-      ctx.translate(veh.x, veh.y);
-
-      if (veh.type === 'buggy') {
-        ctx.rotate(veh.angle);
-        // Колёса
-        ctx.fillStyle = '#0f172a';
-        ctx.beginPath();
-        ctx.arc(-34, 42, 16, 0, Math.PI * 2);
-        ctx.arc(34, 42, 16, 0, Math.PI * 2);
-        ctx.fill();
-        // Каркас багги
-        ctx.fillStyle = hullColor;
-        ctx.beginPath();
-        ctx.moveTo(-48, 28);
-        ctx.lineTo(-22, 8);
-        ctx.lineTo(28, 12);
-        ctx.lineTo(50, 30);
-        ctx.closePath();
-        ctx.fill();
-        // Турель
-        ctx.fillStyle = trimColor;
-        ctx.fillRect(veh.facing === 1 ? 8 : -28, 2, 22, 7);
-      } else if (veh.type === 'apc') {
-        ctx.rotate(veh.angle);
-        // 6 колёс
-        ctx.fillStyle = '#0f172a';
-        [-52, 0, 52].forEach(wx => {
-          ctx.beginPath();
-          ctx.arc(wx, 56, 15, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        // Бронекорпус
-        ctx.fillStyle = hullColor;
-        ctx.beginPath();
-        ctx.roundRect(-68, 10, 136, 36, 10);
-        ctx.fill();
-        ctx.fillStyle = trimColor;
-        ctx.fillRect(-45, 18, 90, 8);
-      } else if (veh.type === 'tank') {
-        ctx.rotate(veh.angle);
-        // Гусеницы
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath();
-        ctx.roundRect(-80, 52, 160, 26, 12);
-        ctx.fill();
-        // Корпус и башня
-        ctx.fillStyle = hullColor;
-        ctx.beginPath();
-        ctx.roundRect(-72, 26, 144, 28, 8);
-        ctx.fill();
-        ctx.fillStyle = trimColor;
-        ctx.beginPath();
-        ctx.roundRect(-38, 6, 76, 22, 8);
-        ctx.fill();
-        // Орудийный ствол
-        ctx.fillStyle = '#cbd5e1';
-        ctx.fillRect(veh.facing === 1 ? 26 : -86, 13, 60, 9);
-      } else if (veh.type === 'helicopter') {
-        ctx.rotate(veh.angle);
-        // Хвостовая балка и хвостовой винт
-        const tailDir = -veh.facing;
-        ctx.fillStyle = hullColor;
-        ctx.fillRect(tailDir * 15, 24, tailDir * 68, 12);
-        ctx.fillStyle = trimColor;
-        ctx.fillRect(tailDir * 80, 10, 8, 34);
-        // Фюзеляж и кабина
-        ctx.fillStyle = hullColor;
-        ctx.beginPath();
-        ctx.ellipse(0, 32, 48, 22, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#bae6fd';
-        ctx.beginPath();
-        ctx.ellipse(veh.facing * 20, 28, 18, 12, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Несущий ротор сверху
-        const bladeW = Math.max(12, Math.abs(Math.cos(veh.rotorAngle || nowSec * 25)) * 90);
-        ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(-bladeW / 2, 4, bladeW, 5);
-      } else if (veh.type === 'plane') {
-        // Самолёт с неподвижным крылом, фюзеляжем и хвостовым оперением
-        ctx.rotate(veh.angle);
-        const dir = veh.facing;
-
-        // Хвостовое оперение (киль + стабилизатор)
-        ctx.fillStyle = trimColor;
-        ctx.beginPath();
-        ctx.moveTo(-dir * 52, 22);
-        ctx.lineTo(-dir * 78, 2);
-        ctx.lineTo(-dir * 78, 24);
-        ctx.closePath();
-        ctx.fill();
-
-        // Фюзеляж с обтекаемым носом
-        ctx.fillStyle = hullColor;
-        ctx.beginPath();
-        ctx.moveTo(dir * 76, 24);
-        ctx.lineTo(dir * 25, 12);
-        ctx.lineTo(-dir * 76, 15);
-        ctx.lineTo(-dir * 76, 31);
-        ctx.lineTo(dir * 25, 34);
-        ctx.closePath();
-        ctx.fill();
-
-        // Неподвижное крыло
-        ctx.fillStyle = trimColor;
-        ctx.beginPath();
-        ctx.moveTo(dir * 18, 22);
-        ctx.lineTo(-dir * 12, 22);
-        ctx.lineTo(-dir * 28, 42);
-        ctx.lineTo(dir * 4, 42);
-        ctx.closePath();
-        ctx.fill();
-      } else if (veh.type === 'aa_turret') {
-        // Стационарная система ПВО
-        ctx.fillStyle = '#334155';
-        ctx.fillRect(-26, 26, 52, 22);
-        ctx.save();
-        ctx.translate(0, 22);
-        ctx.rotate(veh.angle);
-        ctx.fillStyle = hullColor;
-        ctx.fillRect(-16, -12, 32, 24);
-        ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(10, -8, 26, 6);
-        ctx.fillRect(10, 2, 26, 6);
-        ctx.restore();
-
-        // Индикация захвата воздушной цели
-        if (veh.targetId) {
-          ctx.strokeStyle = '#ff9d2e';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(0, 22, 34 + Math.sin(nowSec * 14) * 4, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-
-      // Полоска прочности техники
-      const hpW = 64;
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(-hpW / 2, -16, hpW, 6);
-      ctx.fillStyle = isBlue ? '#38bdf8' : '#fb7185';
-      ctx.fillRect(-hpW / 2, -16, hpW * Math.max(0, veh.hp / veh.maxHp), 6);
-
-      ctx.restore();
-    }
-
-    function drawProjectile(pr) {
-      const isBlue = pr.team === 'blue';
-      ctx.save();
-      if (pr.kind === 'shell') {
-        ctx.fillStyle = '#fbbf24';
-        ctx.beginPath();
-        ctx.arc(pr.x, pr.y, 7, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (pr.kind === 'aa_missile') {
-        ctx.fillStyle = '#fb923c';
-        ctx.beginPath();
-        ctx.arc(pr.x, pr.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = isBlue ? '#38bdf8' : '#fb7185';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(pr.x, pr.y);
-        ctx.lineTo(pr.x - pr.vx * 0.025, pr.y - pr.vy * 0.025);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    function drawMinimap(targetCtx, w, h, state) {
-      targetCtx.clearRect(0, 0, w, h);
-      const worldW = CLIENT_STATE.worldConfig.WORLD_WIDTH || 7200;
-      const worldH = CLIENT_STATE.worldConfig.WORLD_HEIGHT || 1600;
-      const sx = w / worldW;
-      const sy = h / worldH;
-
-      // Рельеф
-      targetCtx.strokeStyle = '#475569';
-      targetCtx.lineWidth = 1.5;
-      targetCtx.beginPath();
-      for (let x = 0; x <= worldW; x += 180) {
-        const py = getTerrainHeightAt(x) * sy;
-        if (x === 0) targetCtx.moveTo(x * sx, py);
-        else targetCtx.lineTo(x * sx, py);
-      }
-      targetCtx.stroke();
-
-      // Базы
-      targetCtx.fillStyle = 'rgba(43, 140, 255, 0.35)';
-      targetCtx.fillRect(0, 0, 950 * sx, h);
-      targetCtx.fillStyle = 'rgba(255, 59, 92, 0.35)';
-      targetCtx.fillRect((worldW - 950) * sx, 0, 950 * sx, h);
-
-      if (!state) return;
-
-      // Флаг
-      const fx = state.flag.x * sx;
-      const fy = state.flag.y * sy;
-      targetCtx.fillStyle = state.flag.owner === 'blue' ? '#38bdf8' : (state.flag.owner === 'red' ? '#fb7185' : '#f5b82e');
-      targetCtx.beginPath();
-      targetCtx.arc(fx, fy - 4, 4.5, 0, Math.PI * 2);
-      targetCtx.fill();
-
-      // Техника
-      for (const v of state.vehicles) {
-        targetCtx.fillStyle = v.team === 'blue' ? '#60a5fa' : '#f87171';
-        targetCtx.fillRect(v.x * sx - 2, v.y * sy - 2, 4, 4);
-      }
-
-      // Игроки
-      const me = state.players.find(p => p.token === CLIENT_STATE.token);
-      for (const p of state.players) {
-        if (!p.alive) continue;
-        targetCtx.fillStyle = p.team === 'blue' ? '#2b8cff' : '#ff3b5c';
-        targetCtx.beginPath();
-        targetCtx.arc((p.x + 17) * sx, (p.y + 32) * sy, p.token === CLIENT_STATE.token ? 4.5 : 3.5, 0, Math.PI * 2);
-        targetCtx.fill();
-      }
-
-      // Рамка текущей камеры
-      if (me) {
-        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
-        targetCtx.lineWidth = 1;
-        targetCtx.strokeRect(
-          CLIENT_STATE.camera.x * sx,
-          CLIENT_STATE.camera.y * sy,
-          canvas.width * sx,
-          canvas.height * sy
-        );
-      }
-    }
-
-    // ========================================================================
-    // ГЛАВНЫЙ КЛИЕНТСКИЙ ЦИКЛ ОТРИСОВКИ (REQUESTANIMATIONFRAME)
-    // ========================================================================
-    let lastFrameTime = performance.now();
-    function renderLoop(now) {
-      const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
-      lastFrameTime = now;
-      const nowSec = now / 1000;
-
-      updateEffects(dt);
-      drawWorldAndEntities(dt, nowSec);
-
-      if (CLIENT_STATE.screen === 'playing') {
-        drawMinimap(minimapCtx, minimapCanvas.width, minimapCanvas.height, CLIENT_STATE.latestServerState);
-        if (CLIENT_STATE.fullMapOpen) {
-          drawMinimap(fullMapCtx, fullMapCanvas.width, fullMapCanvas.height, CLIENT_STATE.latestServerState);
-        }
-      }
-
-      requestAnimationFrame(renderLoop);
-    }
-
-    requestAnimationFrame(renderLoop);
-  </script>
-</body>
-</html>
+    room.match.events = [];
+    io.to(room.code).emit('game_state', payload);
+  }
+}, 1000 / CONFIG.BROADCAST_RATE);
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`==================================================`);
+  console.log(`  BASE WARS SERVER запущен на порту ${PORT}`);
+  console.log(`  Локальный доступ: http://localhost:${PORT}`);
+  console.log(`==================================================`);
+});
