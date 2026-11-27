@@ -64,7 +64,7 @@ const CONFIG = {
   FLAG: {
     X: 3600,
     RADIUS: 240,
-    CAPTURE_SPEED: 0.22 // ~4.5 сек на полный захват от 0 до 1
+    CAPTURE_SPEED: 0.22
   },
 
   // Магазин и техника
@@ -174,20 +174,18 @@ const CONFIG = {
 };
 
 // ============================================================================
-// ГЕНЕРАЦИЯ РЕЛЬЕФА И ПРЕПЯТСТВИЙ КАРТЫ (ЕДИНАЯ ДЛЯ СЕРВЕРА И КЛИЕНТА)
+// ГЕНЕРАЦИЯ РЕЛЬЕФА И ПРЕПЯТСТВИЙ КАРТЫ
 // ============================================================================
 function getTerrainHeightAt(x) {
   const clampedX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH, x));
-  // Ровные площадки на базах (0..950 и 6250..7200) и в центре (3250..3950)
-  if (clampedX < 950 || clampedX > 6250) {
+  if (clampedX < 950 || clampedX > CONFIG.WORLD_WIDTH - 950) {
     return CONFIG.GROUND_BASE_Y;
   }
   if (clampedX > 3250 && clampedX < 3950) {
-    return CONFIG.GROUND_BASE_Y - 35; // Небольшое возвышение центрального плато
+    return CONFIG.GROUND_BASE_Y - 35;
   }
 
-  // Плавные холмы и низины между базами и центром
-  const norm = (clampedX - 950) / (6250 - 950); // 0..1
+  const norm = (clampedX - 950) / (6250 - 950);
   const envelope = Math.sin(norm * Math.PI);
   const hill1 = Math.sin((clampedX - 950) * 0.0024) * 95;
   const hill2 = Math.cos((clampedX - 950) * 0.0055) * 32;
@@ -195,14 +193,11 @@ function getTerrainHeightAt(x) {
 }
 
 const MAP_PLATFORMS = [
-  // Укрепления и платформы на синей базе
   { id: 'b_tower_1', x: 520, y: 1120, w: 180, h: 22, type: 'bridge' },
   { id: 'b_bunker', x: 1080, y: 1170, w: 150, h: 24, type: 'bunker' },
-  // Укрепления на подступах к центру
   { id: 'mid_left_plat', x: 2450, y: 1110, w: 220, h: 22, type: 'platform' },
   { id: 'mid_center_arch', x: 3470, y: 1080, w: 260, h: 22, type: 'bridge' },
   { id: 'mid_right_plat', x: 4530, y: 1110, w: 220, h: 22, type: 'platform' },
-  // Укрепления на красной базе
   { id: 'r_bunker', x: 5970, y: 1170, w: 150, h: 24, type: 'bunker' },
   { id: 'r_tower_1', x: 6500, y: 1120, w: 180, h: 22, type: 'bridge' }
 ];
@@ -238,8 +233,8 @@ function createInitialMatchState() {
     flag: {
       x: CONFIG.FLAG.X,
       y: getTerrainHeightAt(CONFIG.FLAG.X),
-      progress: 0, // -1 (полностью синий) .. 0 (нейтральный) .. +1 (полностью красный)
-      owner: null, // 'blue' | 'red' | null
+      progress: 0,
+      owner: null,
       contested: false,
       capturingTeam: null
     },
@@ -267,7 +262,6 @@ function createPlayerObject(socketId, token, nickname, team, isHost) {
     connected: true,
     disconnectTimer: null,
 
-    // Состояние бойца
     x: spawnX,
     y: spawnY,
     vx: 0,
@@ -284,7 +278,6 @@ function createPlayerObject(socketId, token, nickname, team, isHost) {
     fireCooldown: 0,
     hitFlash: 0,
 
-    // Экономика и статистика
     credits: CONFIG.START_CREDITS,
     totalCreditsEarned: CONFIG.START_CREDITS,
     kills: 0,
@@ -292,7 +285,6 @@ function createPlayerObject(socketId, token, nickname, team, isHost) {
     captures: 0,
     vehiclesDestroyed: 0,
 
-    // Текущий ввод клиента
     input: {
       left: false,
       right: false,
@@ -313,6 +305,7 @@ function getRoomLobbyPayload(room) {
     code: room.code,
     status: room.status,
     hostToken: room.hostToken,
+    countdownValue: room.countdownValue,
     players: room.players.map(p => ({
       nickname: p.nickname,
       team: p.team,
@@ -324,9 +317,71 @@ function getRoomLobbyPayload(room) {
 }
 
 // ============================================================================
+// АВТОЗАПУСК ЧЕРЕЗ 3 СЕКУНДЫ ПОСЛЕ ГОТОВНОСТИ ОБОИХ ИГРОКОВ
+// ============================================================================
+function clearRoomCountdown(room) {
+  if (!room) return;
+  if (room.countdownTimer) {
+    clearInterval(room.countdownTimer);
+    room.countdownTimer = null;
+  }
+  if (room.countdownValue !== null && room.countdownValue !== undefined) {
+    room.countdownValue = null;
+    io.to(room.code).emit('countdown_cancelled');
+  }
+}
+
+function checkAutoStartCountdown(room) {
+  if (!room || room.status !== 'lobby') return;
+
+  const bothReady =
+    room.players.length === 2 &&
+    room.players.every(p => p.connected && p.nickname.length > 0 && p.ready);
+
+  if (!bothReady) {
+    clearRoomCountdown(room);
+    return;
+  }
+
+  if (room.countdownTimer) return;
+
+  room.countdownValue = 3;
+  io.to(room.code).emit('match_countdown', { seconds: room.countdownValue });
+
+  room.countdownTimer = setInterval(() => {
+    if (!rooms.has(room.code) || room.status !== 'lobby') {
+      clearInterval(room.countdownTimer);
+      room.countdownTimer = null;
+      return;
+    }
+
+    const stillReady =
+      room.players.length === 2 &&
+      room.players.every(p => p.connected && p.nickname.length > 0 && p.ready);
+
+    if (!stillReady) {
+      clearRoomCountdown(room);
+      return;
+    }
+
+    room.countdownValue -= 1;
+
+    if (room.countdownValue > 0) {
+      io.to(room.code).emit('match_countdown', { seconds: room.countdownValue });
+    } else {
+      clearInterval(room.countdownTimer);
+      room.countdownTimer = null;
+      room.countdownValue = null;
+      startMatch(room);
+    }
+  }, 1000);
+}
+
+// ============================================================================
 // ЛОГИКА МАТЧА И СИМУЛЯЦИЯ
 // ============================================================================
 function startMatch(room) {
+  clearRoomCountdown(room);
   room.status = 'playing';
   room.match = createInitialMatchState();
   room.winner = null;
@@ -351,8 +406,6 @@ function startMatch(room) {
     p.vehiclesDestroyed = 0;
   });
 
-  // Стартовые защитные турели ПВО на базах не ставятся бесплатно, чтобы игрок сам покупал их в магазине,
-  // но добавим по 1 лёгкому разведывательному багги на каждой базе для динамичного старта
   spawnVehicle(room, 'blue', 'buggy', 620);
   spawnVehicle(room, 'red', 'buggy', CONFIG.WORLD_WIDTH - 620);
 
@@ -395,7 +448,7 @@ function spawnVehicle(room, team, type, customX = null) {
     maxHp: spec.maxHp,
     driverToken: null,
     fireCooldown: 0,
-    targetId: null, // Для ПВО
+    targetId: null,
     rotorAngle: 0
   };
 
@@ -414,7 +467,6 @@ function addMatchEvent(room, type, data) {
 function damageSoldier(room, target, amount, attackerPlayer) {
   if (!target.alive) return;
 
-  // Бонус защиты базы при прокачке укреплений
   const nearOwnBase = (target.team === 'blue' && target.x < 1100) ||
                       (target.team === 'red' && target.x > CONFIG.WORLD_WIDTH - 1100);
   const upgradeLvl = room.match.baseUpgrades[target.team] || 0;
@@ -431,7 +483,6 @@ function damageSoldier(room, target, amount, attackerPlayer) {
     target.vx = 0;
     target.vy = 0;
 
-    // Если был в технике — освобождаем её
     if (target.vehicleId) {
       const veh = room.match.vehicles.find(v => v.id === target.vehicleId);
       if (veh && veh.driverToken === target.token) {
@@ -463,7 +514,6 @@ function damageVehicle(room, vehicle, amount, attackerPlayer) {
     vehicle.hp = 0;
     const spec = CONFIG.SHOP[vehicle.type];
 
-    // Высаживаем водителя, если был внутри (он получает небольшой урон от катапультирования)
     if (vehicle.driverToken) {
       const driver = room.players.find(p => p.token === vehicle.driverToken);
       if (driver) {
@@ -496,7 +546,6 @@ function updateRoomSimulation(room, dt) {
   if (room.status !== 'playing' || !room.match) return;
   const m = room.match;
 
-  // 1. Таймер матча
   m.timeLeft -= dt;
   if (m.timeLeft <= 0) {
     m.timeLeft = 0;
@@ -504,7 +553,6 @@ function updateRoomSimulation(room, dt) {
     return;
   }
 
-  // 2. Пассивный доход и регенерация на своей базе (при наличии улучшения)
   room.players.forEach(p => {
     const income = CONFIG.PASSIVE_INCOME_PER_SEC * dt;
     p.credits += income;
@@ -519,12 +567,10 @@ function updateRoomSimulation(room, dt) {
     }
   });
 
-  // 3. Обновление игроков (солдат и управление техникой)
   room.players.forEach(p => {
     if (p.hitFlash > 0) p.hitFlash = Math.max(0, p.hitFlash - dt);
     if (p.fireCooldown > 0) p.fireCooldown = Math.max(0, p.fireCooldown - dt);
 
-    // Возрождение через 3 секунды
     if (!p.alive) {
       p.respawnTimer -= dt;
       if (p.respawnTimer <= 0) {
@@ -542,7 +588,6 @@ function updateRoomSimulation(room, dt) {
       return;
     }
 
-    // Если игрок управляет техникой
     if (p.vehicleId) {
       const veh = m.vehicles.find(v => v.id === p.vehicleId);
       if (!veh) {
@@ -553,7 +598,6 @@ function updateRoomSimulation(room, dt) {
       }
     }
 
-    // Физика пешего солдата
     const inp = p.input;
     const moveDir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     const maxSpeed = inp.sprint ? CONFIG.SOLDIER.RUN_SPEED : CONFIG.SOLDIER.WALK_SPEED;
@@ -568,24 +612,20 @@ function updateRoomSimulation(room, dt) {
       if (Math.abs(p.vx) < 8) p.vx = 0;
     }
 
-    // Прыжок
     if (inp.up && p.onGround) {
       p.vy = CONFIG.SOLDIER.JUMP_FORCE;
       p.onGround = false;
       addMatchEvent(room, 'jump', { x: p.x + 17, y: p.y + CONFIG.SOLDIER.HEIGHT });
     }
 
-    // Гравитация
     p.vy += CONFIG.SOLDIER.GRAVITY * dt;
 
     const prevBottom = p.y + CONFIG.SOLDIER.HEIGHT;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
 
-    // Границы карты
     p.x = Math.max(40, Math.min(CONFIG.WORLD_WIDTH - 40 - CONFIG.SOLDIER.WIDTH, p.x));
 
-    // Коллизии с платформами (односторонние сверху)
     let landed = false;
     if (p.vy >= 0 && !inp.down) {
       const centerX = p.x + CONFIG.SOLDIER.WIDTH / 2;
@@ -602,7 +642,6 @@ function updateRoomSimulation(room, dt) {
       }
     }
 
-    // Коллизия с рельефом земли
     const groundY = getTerrainHeightAt(p.x + CONFIG.SOLDIER.WIDTH / 2);
     if (p.y + CONFIG.SOLDIER.HEIGHT >= groundY) {
       p.y = groundY - CONFIG.SOLDIER.HEIGHT;
@@ -611,13 +650,11 @@ function updateRoomSimulation(room, dt) {
     }
     p.onGround = landed;
 
-    // Прицеливание
     const headX = p.x + CONFIG.SOLDIER.WIDTH / 2;
     const headY = p.y + 22;
     p.aimAngle = Math.atan2(inp.aimY - headY, inp.aimX - headX);
     p.facing = Math.cos(p.aimAngle) >= 0 ? 1 : -1;
 
-    // Анимация
     if (!p.onGround) {
       p.animState = p.vy < 0 ? 'jump' : 'fall';
     } else if (Math.abs(p.vx) > 290) {
@@ -628,7 +665,6 @@ function updateRoomSimulation(room, dt) {
       p.animState = 'idle';
     }
 
-    // Стрельба из энергетического бластера
     if (inp.fire && p.fireCooldown <= 0) {
       p.fireCooldown = CONFIG.SOLDIER.FIRE_COOLDOWN;
       const muzzleX = headX + Math.cos(p.aimAngle) * 32;
@@ -648,24 +684,20 @@ function updateRoomSimulation(room, dt) {
     }
   });
 
-  // 4. Обновление бесхозной техники, авиации и ПВО
   m.vehicles.forEach(veh => {
     const spec = CONFIG.SHOP[veh.type];
     if (!spec) return;
     if (veh.fireCooldown > 0) veh.fireCooldown = Math.max(0, veh.fireCooldown - dt);
 
-    // Автоматическая система ПВО (стреляет ТОЛЬКО по вражеской авиации!)
     if (veh.type === 'aa_turret') {
       const groundY = getTerrainHeightAt(veh.x);
       veh.y = groundY - spec.height;
 
-      // Поиск ближайшей вражеской воздушной цели
       let bestTarget = null;
       let bestDist = spec.range;
 
       for (const candidate of m.vehicles) {
         const candSpec = CONFIG.SHOP[candidate.type];
-        // СТРОГОЕ ПРАВИЛО: ПВО никогда не атакует свою команду и атакует только авиацию
         if (candidate.team !== veh.team && candSpec && candSpec.category === 'air') {
           const dist = Math.hypot(candidate.x - veh.x, candidate.y - veh.y);
           if (dist <= bestDist) {
@@ -704,7 +736,6 @@ function updateRoomSimulation(room, dt) {
       return;
     }
 
-    // Если в технике нет водителя
     if (!veh.driverToken) {
       if (spec.category === 'ground') {
         veh.vx *= Math.pow(0.01, dt);
@@ -714,7 +745,6 @@ function updateRoomSimulation(room, dt) {
         const slope = getTerrainHeightAt(veh.x + 25) - getTerrainHeightAt(veh.x - 25);
         veh.angle = Math.atan2(slope, 50) * 0.6;
       } else if (spec.category === 'air') {
-        // Плавное снижение беспилотной техники при отсутствии пилота
         veh.vx *= Math.pow(0.2, dt);
         veh.vy = Math.min(220, veh.vy + 350 * dt);
         veh.x += veh.vx * dt;
@@ -729,10 +759,7 @@ function updateRoomSimulation(room, dt) {
     }
   });
 
-  // 5. Обновление снарядов и проверка попаданий
   updateProjectiles(room, dt);
-
-  // 6. Захват центральной зоны и флага
   updateFlagAndScore(room, dt);
 }
 
@@ -786,7 +813,6 @@ function updateControlledVehicle(room, player, veh, dt) {
     if (veh.y < minY) { veh.y = minY; veh.vy = 0; }
     if (veh.y > maxY) { veh.y = maxY; veh.vy = 0; }
   } else if (veh.type === 'plane') {
-    // Самолёт с неподвижным крылом: постоянная подъёмная тяга, тангаж по W/S и разворот по A/D
     if (moveX !== 0 && moveX !== veh.facing) {
       veh.facing = moveX;
     }
@@ -803,7 +829,6 @@ function updateControlledVehicle(room, player, veh, dt) {
     veh.x += veh.vx * dt;
     veh.y += veh.vy * dt;
 
-    // Разворот у краёв карты
     if (veh.x < 180) { veh.x = 180; veh.facing = 1; veh.vx = Math.abs(veh.vx); }
     if (veh.x > CONFIG.WORLD_WIDTH - 180) { veh.x = CONFIG.WORLD_WIDTH - 180; veh.facing = -1; veh.vx = -Math.abs(veh.vx); }
 
@@ -815,7 +840,6 @@ function updateControlledVehicle(room, player, veh, dt) {
     veh.angle = Math.atan2(veh.vy, Math.abs(veh.vx)) * veh.facing * 0.7;
   }
 
-  // Синхронизация позиции игрока с техникой
   player.x = veh.x - CONFIG.SOLDIER.WIDTH / 2;
   player.y = veh.y + spec.height / 2 - CONFIG.SOLDIER.HEIGHT / 2;
   player.vx = veh.vx;
@@ -825,12 +849,10 @@ function updateControlledVehicle(room, player, veh, dt) {
   const aimAngle = Math.atan2(inp.aimY - (veh.y + spec.height * 0.4), inp.aimX - veh.x);
   player.aimAngle = aimAngle;
 
-  // Стрельба из техники
   if (inp.fire && veh.fireCooldown <= 0) {
     veh.fireCooldown = spec.fireCooldown;
     let shootAngle = aimAngle;
 
-    // Для самолёта ограничиваем угол пушки передней полусферой / пикированием
     if (veh.type === 'plane') {
       const baseDir = veh.facing === 1 ? 0.15 : Math.PI - 0.15;
       shootAngle = baseDir + Math.sin(aimAngle) * 0.45;
@@ -872,7 +894,6 @@ function updateProjectiles(room, dt) {
     p.life -= dt;
     if (p.life <= 0) continue;
 
-    // Самонаведение ракет ПВО на вражескую воздушную цель
     if (p.kind === 'aa_missile' && p.targetVehicleId) {
       const target = m.vehicles.find(v => v.id === p.targetVehicleId);
       if (target && target.team !== p.team) {
@@ -882,7 +903,7 @@ function updateProjectiles(room, dt) {
         p.vy += (Math.sin(desiredAngle) * speed - p.vy) * 5.5 * dt;
       }
     } else if (p.kind === 'shell') {
-      p.vy += 320 * dt; // Лёгкая баллистика танкового снаряда
+      p.vy += 320 * dt;
     }
 
     p.x += p.vx * dt;
@@ -893,14 +914,12 @@ function updateProjectiles(room, dt) {
     const attacker = room.players.find(pl => pl.token === p.ownerToken) || null;
     let hit = false;
 
-    // 1. Попадание в землю
     const groundY = getTerrainHeightAt(p.x);
     if (p.y >= groundY) {
       p.y = groundY;
       hit = true;
     }
 
-    // 2. Попадание во вражескую технику
     if (!hit) {
       for (const veh of m.vehicles) {
         if (veh.team === p.team) continue;
@@ -915,7 +934,6 @@ function updateProjectiles(room, dt) {
       }
     }
 
-    // 3. Попадание во вражеского пешего солдата
     if (!hit) {
       for (const pl of room.players) {
         if (!pl.alive || pl.team === p.team || pl.vehicleId) continue;
@@ -929,7 +947,6 @@ function updateProjectiles(room, dt) {
     }
 
     if (hit) {
-      // Урон по площади (для танковых снарядов и ракет ПВО)
       if (p.splashRadius > 0) {
         for (const pl of room.players) {
           if (!pl.alive || pl.team === p.team || pl.vehicleId) continue;
@@ -1016,7 +1033,6 @@ function updateFlagAndScore(room, dt) {
     }
   }
 
-  // Начисление очков и кредитов за удержание захваченного флага
   if (flag.owner) {
     room.match.scores[flag.owner] += CONFIG.FLAG_HOLD_POINTS_PER_SEC * dt;
     const holder = room.players.find(p => p.team === flag.owner);
@@ -1058,7 +1074,6 @@ function finishMatch(room) {
 // ОБРАБОТКА SOCKET.IO СОБЫТИЙ
 // ============================================================================
 io.on('connection', (socket) => {
-  // Создание новой комнаты
   socket.on('create_room', ({ nickname }) => {
     const cleanName = sanitizeNickname(nickname);
     if (!cleanName) {
@@ -1071,8 +1086,10 @@ io.on('connection', (socket) => {
 
     const room = {
       code,
-      status: 'lobby', // 'lobby' | 'playing' | 'finished'
+      status: 'lobby',
       hostToken: token,
+      countdownTimer: null,
+      countdownValue: null,
       players: [player],
       match: null,
       winner: null
@@ -1088,7 +1105,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Присоединение по коду или быстрый вход
   socket.on('join_room', ({ code, nickname }) => {
     const cleanName = sanitizeNickname(nickname);
     if (!cleanName) {
@@ -1124,7 +1140,6 @@ io.on('connection', (socket) => {
     io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
   });
 
-  // Быстрый поиск доступного лобби или создание нового
   socket.on('quick_match', ({ nickname }) => {
     const cleanName = sanitizeNickname(nickname);
     if (!cleanName) {
@@ -1160,6 +1175,8 @@ io.on('connection', (socket) => {
         code,
         status: 'lobby',
         hostToken: token,
+        countdownTimer: null,
+        countdownValue: null,
         players: [player],
         match: null,
         winner: null
@@ -1175,7 +1192,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Переподключение при временном обрыве связи
   socket.on('reconnect_session', ({ code, token }) => {
     const room = rooms.get(code);
     if (!room) return socket.emit('session_expired');
@@ -1212,14 +1228,14 @@ io.on('connection', (socket) => {
       connected: true
     });
     io.to(code).emit('lobby_update', getRoomLobbyPayload(room));
+    checkAutoStartCountdown(room);
   });
 
-  // Смена команды в лобби
   socket.on('switch_team', () => {
     const session = socketToSession.get(socket.id);
     if (!session) return;
     const room = rooms.get(session.code);
-    if (!room || room.status === 'playing') return;
+    if (!room || room.status !== 'lobby') return;
 
     const player = room.players.find(p => p.token === session.token);
     if (!player) return;
@@ -1229,32 +1245,32 @@ io.on('connection', (socket) => {
     if (!occupied) {
       player.team = targetTeam;
       player.ready = false;
+      clearRoomCountdown(room);
       io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
     } else {
       socket.emit('error_msg', 'Эта команда уже занята вторым игроком.');
     }
   });
 
-  // Переключение статуса готовности
   socket.on('toggle_ready', () => {
     const session = socketToSession.get(socket.id);
     if (!session) return;
     const room = rooms.get(session.code);
-    if (!room || room.status === 'playing') return;
+    if (!room || room.status !== 'lobby') return;
 
     const player = room.players.find(p => p.token === session.token);
     if (!player || !player.nickname) return;
 
     player.ready = !player.ready;
     io.to(room.code).emit('lobby_update', getRoomLobbyPayload(room));
+    checkAutoStartCountdown(room);
   });
 
-  // Запуск матча создателем комнаты
   socket.on('request_start_match', () => {
     const session = socketToSession.get(socket.id);
     if (!session) return;
     const room = rooms.get(session.code);
-    if (!room || room.status === 'playing') return;
+    if (!room || room.status !== 'lobby') return;
 
     if (room.hostToken !== session.token) {
       return socket.emit('error_msg', 'Только создатель комнаты может начать матч.');
@@ -1267,10 +1283,9 @@ io.on('connection', (socket) => {
       return socket.emit('error_msg', 'Оба игрока должны ввести ники и нажать «Готов».');
     }
 
-    startMatch(room);
+    checkAutoStartCountdown(room);
   });
 
-  // Повторный матч после завершения
   socket.on('play_again', () => {
     const session = socketToSession.get(socket.id);
     if (!session) return;
@@ -1283,7 +1298,6 @@ io.on('connection', (socket) => {
     io.to(room.code).emit('returned_to_lobby', getRoomLobbyPayload(room));
   });
 
-  // Игровой ввод клиента (движение, прицел, стрельба)
   socket.on('player_input', (data) => {
     const session = socketToSession.get(socket.id);
     if (!session || !data || typeof data !== 'object') return;
@@ -1293,7 +1307,6 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.token === session.token);
     if (!player) return;
 
-    // Защита от спама пакетами (> 75 пакетов/сек)
     const now = Date.now();
     if (now - player.lastRateReset > 1000) {
       player.lastRateReset = now;
@@ -1315,7 +1328,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Посадка / выход из техники (клавиша E)
   socket.on('interact_vehicle', () => {
     const session = socketToSession.get(socket.id);
     if (!session) return;
@@ -1325,7 +1337,6 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.token === session.token);
     if (!player || !player.alive) return;
 
-    // Если уже в технике — выходим
     if (player.vehicleId) {
       const veh = room.match.vehicles.find(v => v.id === player.vehicleId);
       if (veh) {
@@ -1335,7 +1346,6 @@ io.on('connection', (socket) => {
         player.y = veh.y - 12;
         player.vy = -180;
         if (spec && spec.category === 'air') {
-          // Безопасное десантирование с парашютом / плавным снижением
           player.vy = 0;
         }
       }
@@ -1343,7 +1353,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Поиск ближайшей свободной техники своей команды (кроме стационарных турелей ПВО)
     let nearest = null;
     let bestDist = 135;
     for (const veh of room.match.vehicles) {
@@ -1363,7 +1372,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Покупка техники или улучшения в магазине
   socket.on('buy_item', ({ itemId }) => {
     const session = socketToSession.get(socket.id);
     if (!session) return;
@@ -1394,7 +1402,6 @@ io.on('connection', (socket) => {
       return socket.emit('shop_feedback', { ok: true, msg: `Укрепления базы: уровень ${currentLvl + 1}` });
     }
 
-    // Проверка лимита техники данного типа для команды
     const existingCount = room.match.vehicles.filter(
       v => v.team === player.team && v.type === itemId
     ).length;
@@ -1408,7 +1415,6 @@ io.on('connection', (socket) => {
 
     player.credits -= spec.cost;
 
-    // Размещение турели ПВО чуть впереди базы, а техники — на посадочной площадке базы
     let spawnX = null;
     if (itemId === 'aa_turret') {
       const offset = existingCount * 160;
@@ -1422,12 +1428,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Выход из комнаты вручную
   socket.on('leave_room', () => {
     handlePlayerExit(socket.id, true);
   });
 
-  // Разрыв соединения
   socket.on('disconnect', () => {
     handlePlayerExit(socket.id, false);
   });
@@ -1440,6 +1444,8 @@ function handlePlayerExit(socketId, immediate) {
 
   const room = rooms.get(session.code);
   if (!room) return;
+
+  clearRoomCountdown(room);
 
   const player = room.players.find(p => p.token === session.token);
   if (!player) return;
@@ -1458,7 +1464,6 @@ function handlePlayerExit(socketId, immediate) {
     return;
   }
 
-  // В активном матче даём 25 секунд на переподключение
   player.connected = false;
   io.to(room.code).emit('player_connection_status', {
     nickname: player.nickname,
